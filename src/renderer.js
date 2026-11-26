@@ -254,6 +254,25 @@ function gameSource(game) {
   return system ? t(system[1]) : romEmulators.find(([id]) => game.emulator === id)?.[1] || game.source;
 }
 
+function addLibraryArtwork(art, game) {
+  const image = el('img', 'game-card-cover');
+  image.alt = '';
+  image.loading = 'lazy';
+  const store = game.provider || game.origin;
+  const storeCover = !game.customCover && ['epic', 'gog', 'amazon'].includes(store);
+  let ambient;
+  if (storeCover) {
+    art.classList.add('store-game-art');
+    ambient = el('img', 'game-card-ambient');
+    ambient.alt = '';
+    ambient.loading = 'lazy';
+    ambient.hidden = true;
+    art.append(ambient);
+  }
+  setArt(image, gameArtwork(game), 0, ambient, !game.emulator && !game.customCover);
+  art.append(image);
+}
+
 function gameCard(game) {
   const card = el('article', 'game-card');
   if (game.emulator) card.dataset.system = systemOf(game);
@@ -262,11 +281,7 @@ function gameCard(game) {
   art.title = t('Ver detalhes de {name}', { name: game.name });
   art.append(el('span', 'game-placeholder', game.name));
   if (game.appId || game.cover || game.artwork?.length || game.gridCover) {
-    const image = el('img');
-    image.alt = '';
-    image.loading = 'lazy';
-    setArt(image, gameArtwork(game), 0, undefined, !game.emulator && !game.customCover);
-    art.append(image);
+    addLibraryArtwork(art, game);
   }
 
   const info = el('div', 'game-info');
@@ -302,11 +317,7 @@ function storeLibraryCard(game) {
   art.setAttribute('aria-label', t('Detalhes de {name}', { name: game.name }));
   art.append(el('span', 'game-placeholder', game.name));
   if (game.cover) {
-    const image = el('img');
-    image.loading = 'lazy';
-    image.alt = '';
-    setArt(image, [game.cover]);
-    art.append(image);
+    addLibraryArtwork(art, game);
   }
   const info = el('div', 'game-info');
   info.append(el('h3', '', game.name), el('p', '', source + ' · ' + t('Não instalado')));

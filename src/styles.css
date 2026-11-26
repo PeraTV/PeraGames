@@ -415,6 +415,12 @@ body[data-palette]:not([data-palette="amber"]) :focus-visible { outline-color: v
 .hero.rotating .hero-cover.panoramic { max-width: 100%; }
 .game-card:not([data-system]) { aspect-ratio: 2 / 3; }
 .game-card:not([data-system]) .game-art img { object-fit: contain; object-position: center; background: #201219; }
+.game-card:not([data-system]) .store-game-art .game-card-cover { object-fit: cover; background: transparent; }
+.game-card:not([data-system]) .store-game-art .game-card-cover.landscape { object-fit: contain; }
+.game-card:not([data-system]) .store-game-art .game-card-ambient { display: none; }
+.game-card:not([data-system]) .store-game-art:has(.game-card-cover.landscape) .game-card-ambient:not([hidden]) {
+  display: block; object-fit: cover; transform: scale(1.18); filter: blur(22px) brightness(.55) saturate(.9);
+}
 .unavailable-game .game-art { filter: grayscale(1) brightness(.8); }
 .unavailable-game .game-info { opacity: 1; transform: none; }
 .unavailable-game .game-info .button { margin-top: 4px; }
