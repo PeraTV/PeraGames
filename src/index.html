@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: https://*.steamstatic.com https://upload.wikimedia.org https://commons.wikimedia.org https://art.gametdb.com https://thumbnails.libretro.com https://m.media-amazon.com https://cdn.simpleicons.org https://www.google.com https://*.gstatic.com https://raw.githubusercontent.com https://dl.flathub.org https://asset.msi.com https://gitlab.com https://playnite.link https://*.epicgames.com https://*.unrealengine.com https://*.gog-statics.com; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: https://*.steamstatic.com https://upload.wikimedia.org https://commons.wikimedia.org https://art.gametdb.com https://thumbnails.libretro.com https://m.media-amazon.com https://cdn.simpleicons.org https://www.google.com https://*.gstatic.com https://raw.githubusercontent.com https://dl.flathub.org https://asset.msi.com https://gitlab.com https://playnite.link https://*.epicgames.com https://*.unrealengine.com https://*.gog-statics.com https://cdn.steamgriddb.com; base-uri 'none'; form-action 'none'">
   <title>PeraGames</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="theater.css">
@@ -288,6 +288,18 @@
           </div>
           <label id="game-query-label">Nome para pesquisar <input id="game-query" maxlength="160"></label>
           <button class="button" id="game-lookup">Buscar informações e capa</button>
+          <details id="grid-settings">
+            <summary>SteamGridDB</summary>
+            <p id="grid-status" role="status"></p>
+            <form id="grid-form">
+              <label>Chave de API do SteamGridDB <input id="grid-key" type="password" maxlength="128" autocomplete="off" required></label>
+              <div class="actions">
+                <button type="submit" class="button" id="grid-save">Salvar chave</button>
+                <button type="button" class="button" id="grid-remove" hidden>Remover chave</button>
+                <button type="button" class="plain" id="grid-preferences">Obter chave no SteamGridDB ↗</button>
+              </div>
+            </form>
+          </details>
           <label>Sinopse personalizada <textarea id="game-description" rows="4" maxlength="2000"></textarea></label>
           <button class="button" id="game-save-info">Salvar sinopse</button>
         </details>

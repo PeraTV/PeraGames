@@ -427,7 +427,17 @@ Classificação da comunidade ProtonDB.|ProtonDB community rating.
 Relatos: {count}.|Reports: {count}.
 O ProtonDB não tem uma correspondência confirmada para este título.|No confirmed ProtonDB match for this title.
 Ainda não há uma classificação no ProtonDB.|No ProtonDB rating yet.
-A consulta de compatibilidade está indisponível no momento.|The compatibility service is temporarily unavailable.`.split('\n').map(line => line.split('|')));
+A consulta de compatibilidade está indisponível no momento.|The compatibility service is temporarily unavailable.
+Chave de API do SteamGridDB|SteamGridDB API key
+Salvar chave|Save key
+Remover chave|Remove key
+Obter chave no SteamGridDB ↗|Get a SteamGridDB key ↗
+Adicione sua chave para buscar capas automaticamente.|Add your key to look up covers automatically.
+SteamGridDB conectado.|SteamGridDB connected.
+SteamGridDB conectado nesta sessão.|SteamGridDB connected for this session.
+Informe uma chave de API válida do SteamGridDB.|Enter a valid SteamGridDB API key.
+A chave do SteamGridDB não foi aceita.|SteamGridDB rejected the API key.
+Não foi possível consultar o SteamGridDB.|Could not contact SteamGridDB.`.split('\n').map(line => line.split('|')));
 
   function languageFor(locale) {
     return /^pt(?:[-_]|$)/i.test(locale || 'pt-BR') ? 'pt-BR' : 'en';

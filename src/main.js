@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, screen, shell } = require('electron');
+const { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, safeStorage, screen, shell } = require('electron');
 const fs = require('node:fs/promises');
 const { constants } = require('node:fs');
 const os = require('node:os');
@@ -13,8 +13,9 @@ const { isWindowsGame, isProtonDirectory, findProtonVersions, findWineVersions, 
 const linuxStores = require('./linux-stores');
 const steamProton = require('./steam-proton');
 const protonCatalog = require('./proton-catalog');
-const { browseSteam, steamAssets, lookupGame, cleanTitle, featuredSteamArt } = require('./game-info');
+const { browseSteam, steamAssets, lookupGame, cleanTitle, titleKey, featuredSteamArt } = require('./game-info');
 const { getCompatibility, protonDBPage } = require('./game-compatibility');
+const { findGridCover, preferencesUrl, verifyGridKey } = require('./steamgriddb');
 const { romArtwork } = require('./rom-art');
 const { loginFlag, setTvLogin } = require('./tv-startup');
 const { version, updateRepository } = require('../package.json');
@@ -36,11 +37,15 @@ const runnable = async file => await fileExists(file) || (platform === 'darwin' 
 const emptyData = () => ({
   games: [], roms: [], apps: {}, favorites: [], played: {}, featured: null, customStores: [],
   gameCovers: {}, gameBackdrops: {}, gameDetails: {}, steamPrograms: [],
+  gridCovers: {},
   gameProton: {}, protonFolders: [], ownedStoreGames: {}, storeTools: {},
   tv: { openOnLaunch: false, atLogin: false, layout: 'cinema', layoutRevision: 1 },
   dolphinPassthrough: false
 });
 let data = emptyData();
+let gridKey = '';
+const canSaveGridKey = async () => await safeStorage?.isAsyncEncryptionAvailable() &&
+  (platform !== 'linux' || !['basic_text', 'unknown'].includes(safeStorage.getSelectedStorageBackend()));
 const windows = new Map();
 let detected = {};
 let installedGames = [];
@@ -58,6 +63,9 @@ async function loadData() {
   try {
     const saved = JSON.parse(await fs.readFile(file, 'utf8'));
     data = { ...emptyData(), ...saved };
+    if (typeof saved.gridKey === 'string' && await canSaveGridKey()) {
+      try { ({ result: gridKey } = await safeStorage.decryptStringAsync(Buffer.from(saved.gridKey, 'base64'))); } catch {}
+    }
     const defaults = emptyData().tv;
     const tv = saved.tv;
     data.tv = {
@@ -169,6 +177,7 @@ function state() {
       canEditSetup: platform === 'linux' && !appId && !emulator && !store,
       artwork: [...(rom?.art || []), rom && online?.cover, ...featuredSteamArt(appId), steam.cover, online?.coverFallback].filter(Boolean),
       screens: rom?.screens,
+      gridCover: data.gridCovers[id]?.url,
       favorite: data.favorites.includes(id), lastPlayed: data.played[id] || 0,
       customCover: Boolean(data.gameCovers[id]), cover: data.gameCovers[id] || (!rom && online?.cover) || steam.cover ||
         (store && data.ownedStoreGames[store]?.find(game => game.id === storeId)?.cover),
@@ -177,6 +186,8 @@ function state() {
   };
   return {
     platform,
+    gridConfigured: Boolean(gridKey),
+    gridKeySaved: Boolean(gridKey && data.gridKey),
     games: [...data.games.filter(game => !game.launcher), ...installedGames].map(gameState),
     ownedStoreGames: platform === 'linux' ? data.ownedStoreGames : {},
     roms: data.roms.map(gameState),
@@ -855,6 +866,7 @@ handle('game:remove', async id => {
     delete copy.gameCovers[id];
     delete copy.gameBackdrops[id];
     delete copy.gameDetails[id];
+    delete copy.gridCovers[id];
     if (copy.featured?.gameId === id) copy.featured.gameId = '';
   });
   romAssets.delete(id);
@@ -917,6 +929,7 @@ handle('game:lookup', async ({ id, query }) => {
   await updateData(copy => {
     const previous = copy.gameDetails[id];
     copy.gameDetails[id] = { ...info, language, customDescription: previous?.customDescription };
+    if (copy.gridCovers[id] && titleKey(copy.gridCovers[id].name) !== titleKey(name)) delete copy.gridCovers[id];
   });
   return state();
 });
@@ -925,6 +938,37 @@ handle('game:cover-search', async ({ id, query }) => {
   const name = typeof query === 'string' ? query.trim().slice(0, 160) || game.name : game.name;
   const params = new URLSearchParams({ tbm: 'isch', q: name + ' video game box art cover' });
   await shell.openExternal('https://www.google.com/search?' + params);
+});
+handle('grid:preferences', () => openWebLink(preferencesUrl, shell));
+handle('grid:key', async input => {
+  const key = typeof input === 'string' ? input.trim() : null;
+  if (key === null || (key && !/^[A-Za-z0-9_-]{16,128}$/.test(key))) {
+    throw new Error('Informe uma chave de API válida do SteamGridDB.');
+  }
+  if (key) await verifyGridKey(key);
+  const encrypted = key && await canSaveGridKey() ? (await safeStorage.encryptStringAsync(key)).toString('base64') : undefined;
+  await updateData(copy => {
+    if (encrypted) copy.gridKey = encrypted;
+    else delete copy.gridKey;
+  });
+  gridKey = key;
+  return state();
+});
+handle('grid:cover', async ({ id, provider, query }) => {
+  if (!gridKey) return;
+  const game = provider ? (Object.hasOwn(data.ownedStoreGames, provider) &&
+    data.ownedStoreGames[provider]?.find(entry => entry.id === id)) : getGame(id);
+  if (!game || game.launcher) return;
+  const name = typeof query === 'string' && query.trim() ? query.trim().slice(0, 160) :
+    (romAssets.get(id)?.name || game.name);
+  const knownApp = /^https:\/\/store\.steampowered\.com\/app\/(\d{1,10})\/$/.exec(data.gameDetails[id]?.url || '')?.[1];
+  const key = gridKey;
+  const url = await findGridCover({ appId: game.appId || knownApp, name }, key);
+  if (!url || key !== gridKey) return;
+  if (!provider) await updateData(copy => {
+    if (key === gridKey) copy.gridCovers[id] = { url, name };
+  });
+  return url;
 });
 handle('game:save-info', async ({ id, description }) => {
   getGame(id);

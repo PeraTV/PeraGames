@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { lookupGame, steamAssets, titleKey } = require('../src/game-info');
 const { getCompatibility, protonDBPage } = require('../src/game-compatibility');
+const { findGridCover, verifyGridKey } = require('../src/steamgriddb');
 const { romArguments } = require('../src/catalog');
 
 const response = data => ({ ok: true, json: async () => data });
@@ -11,6 +12,40 @@ const steamItem = {
   appid: 2215200, success: 1, app_type: 0,
   assets: { asset_url_format: 'steam/apps/2215200/${FILENAME}', library_capsule: 'abc123/library_600x900.jpg' }
 };
+
+test('SteamGridDB prefere capa vertical válida e consulta pelo AppID quando conhecido', async context => {
+  const fetch = context.mock.method(globalThis, 'fetch', async (input, options) => {
+    const url = new URL(input);
+    assert.equal(url.pathname, '/api/v2/grids/steam/477160');
+    assert.equal(options.redirect, 'error');
+    assert.equal(options.headers.Authorization, 'Bearer fixture-key');
+    const base = 'https://cdn.steamgriddb.com/grid/';
+    return response({ success: true, data: [
+      { width: 920, height: 430, url: base + 'wide.jpg', score: 12 },
+      { width: 600, height: 900, url: base + 'portrait.png', score: 5 },
+      { width: 660, height: 930, url: base + 'adult.png', nsfw: true, score: 25 },
+      { width: 600, height: 900, url: 'https://example.com/grid/outsider.jpg', score: 50 }
+    ] });
+  });
+  assert.equal(await findGridCover({ appId: '477160', name: 'Human Fall Flat' }, 'fixture-key'),
+    'https://cdn.steamgriddb.com/grid/portrait.png');
+  assert.equal(fetch.mock.callCount(), 1);
+});
+
+test('SteamGridDB só usa um título exato e não revela a chave quando o serviço recusa a autenticação', async context => {
+  const fetch = context.mock.method(globalThis, 'fetch', async input => {
+    assert.match(input, /\/search\/autocomplete\/Example%20Game$/);
+    return response({ success: true, data: [
+      { id: 10, name: 'Example Game' }, { id: 11, name: 'Example Game' }
+    ] });
+  });
+  assert.equal(await findGridCover({ name: 'Example Game.exe' }, 'fixture-key'), undefined);
+  assert.equal(fetch.mock.callCount(), 1);
+  fetch.mock.mockImplementation(async () => ({ status: 401, ok: false }));
+  await assert.rejects(verifyGridKey('fixture-key'), {
+    message: 'A chave do SteamGridDB não foi aceita.'
+  });
+});
 
 test('resolve a capa moderna e só aceita caminhos de arte reconhecidos', () => {
   assert.equal(steamAssets(steamItem).cover,

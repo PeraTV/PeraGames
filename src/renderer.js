@@ -173,9 +173,9 @@ function orderedGames(games = state.games) {
   return games.toSorted((a, b) => b.lastPlayed - a.lastPlayed || a.name.localeCompare(b.name, 'pt-BR'));
 }
 
-function setArt(image, sources, minWidth = 0, ambient, preferPortrait = false) {
+function setArt(image, sources, minWidth = 0, ambient, preferPortrait = false, onMissing) {
   sources = [...new Set(sources.filter(Boolean))];
-  const key = minWidth + ':' + preferPortrait + ':' + sources.join('|');
+  const key = minWidth + ':' + preferPortrait + ':' + Boolean(onMissing) + ':' + sources.join('|');
   if (image.dataset.sources === key) return;
   image.dataset.sources = key;
   if (ambient) {
@@ -187,6 +187,7 @@ function setArt(image, sources, minWidth = 0, ambient, preferPortrait = false) {
   let usingFallback = false;
   const advance = () => {
     let next = urls.shift();
+    if (!next && !usingFallback) onMissing?.();
     if (!next && wideFallback && !usingFallback) {
       usingFallback = true;
       next = wideFallback;
@@ -224,7 +225,8 @@ function setArt(image, sources, minWidth = 0, ambient, preferPortrait = false) {
 
 function gameArtwork(game) {
   const steam = game.appId ? steamApp + game.appId + '/' : '';
-  return [game.cover, ...(game.artwork || []), ...(steam ? ['library_600x900.jpg', 'library_600x900_2x.jpg', 'header.jpg'].map(file => steam + file) : [])];
+  return [game.cover, ...(game.artwork || []), ...(steam ? ['library_600x900.jpg', 'library_600x900_2x.jpg', 'header.jpg'].map(file => steam + file) : []),
+    game.gridCover];
 }
 
 function gameBanners(game, preferSteamHero = false) {
@@ -244,7 +246,7 @@ function gameCard(game) {
   art.setAttribute('aria-label', t('Detalhes de {name}', { name: game.name }));
   art.title = t('Ver detalhes de {name}', { name: game.name });
   art.append(el('span', 'game-placeholder', game.name));
-  if (game.appId || game.cover || game.artwork?.length) {
+  if (game.appId || game.cover || game.artwork?.length || game.gridCover) {
     const image = el('img');
     image.alt = '';
     image.loading = 'lazy';
@@ -340,6 +342,7 @@ function storeIcon(item) {
 
 let previewStoreGame;
 let compatibilityView;
+let gridView;
 const compatibilityTiers = {
   native: 'Nativo', platinum: 'Platina', gold: 'Ouro', silver: 'Prata', bronze: 'Bronze', borked: 'Não roda'
 };
@@ -381,6 +384,25 @@ async function loadGameCompatibility(game, view) {
   if (compatibilityView === view && byId('game-editor').open) renderGameDetails();
 }
 
+async function loadGridCover(game, view) {
+  if (view !== gridView || view.requested || !byId('game-editor').open) return;
+  view.requested = true;
+  try {
+    const query = game.provider || game.appId ? undefined : byId('game-query').value;
+    const url = await api.gridCover({ id: game.id, provider: game.provider, query });
+    if (!url || view !== gridView || !byId('game-editor').open) return;
+    if (game.provider) previewStoreGame.gridCover = url;
+    else {
+      const entry = [...state.games, ...(state.roms || [])].find(item => item.id === game.id);
+      if (entry) entry.gridCover = url;
+      render();
+    }
+    renderGameDetails();
+  } catch (error) {
+    if (view === gridView && byId('game-editor').open) byId('grid-status').textContent = t(error.message);
+  }
+}
+
 function renderGameDetails() {
   const game = previewStoreGame || [...state.games, ...(state.roms || [])].find(item => item.id === selectedGame);
   if (!game) return;
@@ -400,7 +422,15 @@ function renderGameDetails() {
   }));
   const poster = byId('game-poster');
   poster.toggleAttribute('data-fill', !game.emulator);
-  setArt(poster, gameArtwork(game), 0, undefined, !game.emulator && !game.customCover);
+  const view = gridView;
+  const fallback = state.gridConfigured && !game.customCover && view && !view.lookupPending
+    ? () => queueMicrotask(() => loadGridCover(game, view)) : undefined;
+  setArt(poster, gameArtwork(game), 0, undefined, !game.customCover && (!game.emulator || Boolean(fallback)), fallback);
+  if (!view?.requested) {
+    byId('grid-status').textContent = t(!state.gridConfigured ? 'Adicione sua chave para buscar capas automaticamente.' :
+      state.gridKeySaved ? 'SteamGridDB conectado.' : 'SteamGridDB conectado nesta sessão.');
+  }
+  byId('grid-remove').hidden = !state.gridConfigured;
   setArt(byId('game-backdrop'), gameBanners(game), 900);
   byId('game-reset-cover').hidden = !game.customCover;
   byId('game-reset-backdrop').hidden = !game.customBackdrop;
@@ -577,10 +607,15 @@ function showGameDetails(game) {
   selectedGame = previewStoreGame ? undefined : game.id;
   const view = {};
   compatibilityView = view;
+  const needsLookup = !previewStoreGame && !game.info?.customDescription && (!game.info?.description ||
+    (game.info.language || 'pt-BR') !== document.documentElement.lang);
+  gridView = { lookupPending: needsLookup };
   byId('game-feedback').hidden = true;
   byId('game-query').value = game.name;
   byId('game-description').value = game.info?.customDescription || '';
   byId('game-customize').open = false;
+  byId('grid-settings').open = false;
+  byId('grid-key').value = '';
   byId('game-proton').open = false;
   const protonVersion = byId('proton-version');
   protonVersion.replaceChildren();
@@ -596,8 +631,7 @@ function showGameDetails(game) {
   renderGameDetails();
   byId('game-editor').showModal();
   if (!game.emulator) loadGameCompatibility(game, view);
-  if (!previewStoreGame && !game.info?.customDescription && (!game.info?.description ||
-      (game.info.language || 'pt-BR') !== document.documentElement.lang)) byId('game-lookup').click();
+  if (needsLookup) byId('game-lookup').click();
 }
 
 let gameSetup;
@@ -1772,9 +1806,15 @@ byId('game-lookup').addEventListener('click', async event => {
   const node = event.currentTarget;
   const id = selectedGame;
   const label = node.textContent;
+  const artView = gridView = { lookupPending: true };
+  renderGameDetails();
   node.textContent = t('Consultando…');
   byId('game-feedback').hidden = true;
   const updated = await perform(node, () => api.lookupGame({ id, query: byId('game-query').value }));
+  if (gridView === artView) {
+    artView.lookupPending = false;
+    renderGameDetails();
+  }
   const game = updated && id === selectedGame && state.games.find(item => item.id === id);
   const appId = /\/app\/(\d+)\/$/.exec(game?.info?.url || '')?.[1];
   if (appId && !game.appId && appId !== compatibilityView?.result?.appId) {
@@ -1791,6 +1831,21 @@ byId('game-choose-backdrop').addEventListener('click', event => perform(event.cu
 byId('game-reset-backdrop').addEventListener('click', event => perform(event.currentTarget, () => api.resetBackdrop(selectedGame)));
 byId('cover-search').addEventListener('click', event => perform(event.currentTarget, () =>
   api.searchCover({ id: selectedGame, query: byId('game-query').value })));
+async function saveGridKey(node, key) {
+  if (gridView?.lookupPending) gridView.requested = false;
+  else gridView = {};
+  delete byId('game-poster').dataset.sources;
+  return perform(node, () => api.saveGridKey(key));
+}
+byId('grid-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const input = byId('grid-key');
+  const key = input.value;
+  input.value = '';
+  await saveGridKey(byId('grid-save'), key);
+});
+byId('grid-remove').addEventListener('click', event => saveGridKey(event.currentTarget, ''));
+byId('grid-preferences').addEventListener('click', event => perform(event.currentTarget, api.gridPreferences));
 byId('game-play').addEventListener('click', event => {
   const game = previewStoreGame;
   return perform(event.currentTarget, async () => {
