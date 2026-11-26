@@ -574,6 +574,12 @@ handle('linux-store:open', async ({ provider, setup }) => {
   return openWebLink(setup ? config.setup : await linuxStores.loginUrl(provider, config), shell);
 });
 handle('linux-store:library', provider => withStore(provider, config => refreshLinuxLibrary(provider, config)));
+handle('linux-store:paste-amazon', () => {
+  const value = clipboard.readText().trim();
+  if (value.length > 8192) throw new Error('Copie a URL inteira da última página após entrar na Amazon.');
+  linuxStores.loginCode('amazon', value);
+  return value;
+});
 handle('linux-store:connect', ({ provider, code }) => withStore(provider, async config => {
   await linuxStores.connect(provider, config, code);
   return refreshLinuxLibrary(provider, config);
@@ -991,11 +997,11 @@ handle('proton:executable', async ({ id, reset }, window) => {
 async function playGame(id, window) {
   const game = getGame(id);
   const compatibility = data.gameProton[id] || {};
-  const epicStatus = reason => {
-    if (!window.isDestroyed()) window.webContents.send('game:epic-status', { name: game.name, reason });
+  const storeStatus = reason => {
+    if (!window.isDestroyed()) window.webContents.send('game:store-status', { name: game.name, provider: game.store, reason });
   };
-  if (game.store === 'epic') {
-    epicStatus(platform === 'linux' && !compatibility.proton?.startsWith('wine') ? 'preparing-proton' : 'preparing');
+  if (game.store === 'epic' || game.store === 'amazon') {
+    storeStatus(platform === 'linux' && !compatibility.proton?.startsWith('wine') ? 'preparing-proton' : 'preparing');
   }
   if (game.emulator === 'android') {
     if (platform !== 'win32' || path.extname(game.file).toLowerCase() !== '.lnk') throw new Error('Este jogo precisa de um atalho do Windows.');
@@ -1037,7 +1043,7 @@ async function playGame(id, window) {
   } else if (game.store && platform !== 'linux') {
     const config = await linuxStore(game.store);
     if (!config.ready || !config.installable) throw new Error('A loja não pode abrir este jogo neste sistema.');
-    await linuxStores.play(game.store, config, { id: game.storeId, folder: game.installFolder, onFailure: epicStatus });
+    if (!await linuxStores.play(game.store, config, { id: game.storeId, folder: game.installFolder, onStatus: storeStatus })) return;
   } else if (platform === 'linux' && (isWindowsGame(game) || compatibility.executable)) {
     const executable = compatibility.executable || game.file;
     if (!game.store && !await fileExists(executable)) throw new Error('O executável foi movido ou removido.');
@@ -1051,8 +1057,8 @@ async function playGame(id, window) {
     if (game.store) {
       const config = await linuxStore(game.store);
       if (!config.ready) throw new Error('Instale o componente da loja para continuar.');
-      await linuxStores.play(game.store, config, { id: game.storeId, folder: game.installFolder,
-        umu: runner.file, environment: runner.environment, onFailure: epicStatus });
+      if (!await linuxStores.play(game.store, config, { id: game.storeId, folder: game.installFolder,
+        umu: runner.file, environment: runner.environment, onStatus: storeStatus })) return;
     } else {
       const cwd = path.dirname(executable);
       const command = await withLaunchTools(runner.file, [executable, ...(game.args || [])], game);

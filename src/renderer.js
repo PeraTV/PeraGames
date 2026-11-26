@@ -157,6 +157,18 @@ async function perform(node, action, success) {
   }
 }
 
+async function playFromButton(node, id, action = () => api.play(id)) {
+  if (node.disabled) return;
+  const label = node.textContent;
+  node.textContent = t('Iniciando…');
+  node.setAttribute('aria-busy', 'true');
+  try { await perform(node, action); }
+  finally {
+    if (node.textContent === t('Iniciando…')) node.textContent = label;
+    node.removeAttribute('aria-busy');
+  }
+}
+
 function switchPage(target) {
   if (target !== page) {
     byId('app-search').value = '';
@@ -260,7 +272,7 @@ function gameCard(game) {
   const info = el('div', 'game-info');
   info.append(el('h3', '', game.name), el('p', '', gameSource(game)));
   const actions = el('div', 'actions');
-  const play = button(t('▶ Jogar'), node => perform(node, () => api.play(game.id)), 'button primary');
+  const play = button(t('▶ Jogar'), node => playFromButton(node, game.id), 'button primary');
   const favorite = button(game.favorite ? '★' : '☆', node => perform(node, () => api.favorite(game.id)), 'button');
   favorite.setAttribute('aria-label', t('Favorito: {name}', { name: game.name }));
   favorite.setAttribute('aria-pressed', String(game.favorite));
@@ -756,7 +768,7 @@ function renderHero() {
   const trigger = byId('featured');
   trigger.hidden = emptyRotation || (custom && !game);
   trigger.textContent = game ? t('▶ Jogar') : t('Ver na Steam ↗');
-  trigger.onclick = () => perform(trigger, game ? () => api.play(game.id) : api.featureStore);
+  trigger.onclick = () => game ? playFromButton(trigger, game.id) : perform(trigger, api.featureStore);
   resetHomeRotation();
 }
 
@@ -911,7 +923,7 @@ function renderLinuxStoreGames() {
     install.disabled = storeDialogBusy;
     row.append(el('strong', '', game.name), install);
     if (game.installed) row.append(button(t('▶ Jogar'), node => {
-      perform(node, () => api.play(storeDialogProvider + '-' + game.id));
+      playFromButton(node, storeDialogProvider + '-' + game.id);
     }, 'button primary'));
     return row;
   }));
@@ -953,7 +965,10 @@ function openLinuxStoreLibrary(item) {
   byId('linux-store-setup').hidden = true;
   byId('linux-store-system').hidden = true;
   byId('linux-store-tool').hidden = true;
-  byId('linux-store-amazon-help').hidden = item.id !== 'amazon';
+  const amazon = item.id === 'amazon';
+  byId('linux-store-amazon-help').hidden = !amazon;
+  byId('linux-store-amazon-paste').hidden = !amazon;
+  byId('linux-store-code-label').textContent = t(amazon ? 'URL de retorno do login da Amazon' : 'Código ou URL de retorno do login');
   byId('linux-store-epic-help').hidden = item.id !== 'epic';
   renderLinuxStoreGames();
   byId('linux-store-dialog').showModal();
@@ -1532,7 +1547,7 @@ async function playTheaterGame(node, game = theaterGame) {
   }
   const restoreFocus = document.activeElement === node;
   notify(t('Abrindo {name}…', { name: game.name }));
-  await perform(node, async () => {
+  await playFromButton(byId('theater-play'), game.id, async () => {
     const next = await api.play(game.id);
     if (next?.games) state = next;
   });
@@ -1863,18 +1878,22 @@ api.onSteamDownloadsComplete(({ completed, jobs }) => {
     t('{count} jogos foram instalados pela Steam.', { count: completed.length }));
 });
 api.onSteamLaunchRequested(name => notify(t('Pedindo à Steam para abrir {name}.', { name })));
-api.onEpicLaunchStatus(({ name, reason }) => {
+api.onStoreLaunchStatus(({ name, provider, reason }) => {
+  const store = storeNames[provider] || provider;
   const messages = {
     preparing: 'Preparando {name}.',
     'preparing-proton': 'Preparando {name}. No primeiro uso do Proton, pode levar alguns minutos.',
-    update: 'A Epic pediu uma atualização para {name}. Abra a lista da Epic no PeraGames e selecione Atualizar jogo.',
-    signin: 'O login da Epic falhou ao abrir {name}. Conecte a conta novamente em Lojas.',
-    missing: 'O Legendary não encontrou os arquivos de {name}. Confira a instalação na lista da Epic.',
+    'runner-start': 'Wine ou Proton está iniciando {name}.',
+    update: '{store} pediu uma atualização para {name}. Na lista da loja, selecione Atualizar jogo.',
+    signin: 'O login em {store} falhou ao abrir {name}. Conecte a conta novamente em Lojas.',
+    missing: 'Os arquivos de {name} não foram encontrados. Confira a instalação em {store}.',
     runtime: 'O ambiente do Proton falhou ao iniciar {name}.',
     runner: 'O Wine ou Proton encerrou {name} com erro.',
-    store: 'O Legendary não conseguiu abrir {name}.'
+    'early-exit': '{name} encerrou logo após iniciar. Tente outra versão do Wine ou Proton nas opções do jogo.',
+    'store-timeout': '{store} demorou para responder ao abrir {name}. Confira a conexão e tente novamente.',
+    store: '{store} não conseguiu abrir {name}.'
   };
-  const message = t(messages[reason] || messages.store, { name });
+  const message = t(messages[reason] || messages.store, { name, store });
   if (byId('linux-store-dialog').open) byId('linux-store-status').textContent = message;
   else notify(message);
 });
@@ -2158,6 +2177,7 @@ byId('emulator-market').addEventListener('click', () => {
 });
 byId('game-close').addEventListener('click', () => byId('game-editor').close());
 byId('linux-store-close').addEventListener('click', () => byId('linux-store-dialog').close());
+byId('linux-store-dialog').addEventListener('close', () => { byId('linux-store-code').value = ''; });
 byId('linux-store-search').addEventListener('input', renderLinuxStoreGames);
 byId('linux-store-setup').addEventListener('click', () => storeDialogAction(async provider => {
   if (!storeDialogAutoSetup) return api.openLinuxStore({ provider, setup: true });
@@ -2171,8 +2191,15 @@ byId('linux-store-tool').addEventListener('click', () => storeDialogAction(async
 }));
 byId('linux-store-login').addEventListener('click', async () => {
   await storeDialogAction(provider => api.openLinuxStore({ provider }));
-  if (!byId('linux-store-status').textContent) byId('linux-store-status').textContent = t('Cole o retorno que apareceu após entrar na conta.');
+  if (storeDialogProvider !== 'amazon' && !byId('linux-store-status').textContent) {
+    byId('linux-store-status').textContent = t('Cole o retorno que apareceu após entrar na conta.');
+  }
 });
+byId('linux-store-amazon-paste').addEventListener('click', () => storeDialogAction(async () => {
+  const value = await api.pasteAmazonLogin();
+  if (byId('linux-store-dialog').open) byId('linux-store-code').value = value;
+  return t('URL colada. Clique em Vincular conta.');
+}));
 byId('linux-store-load').addEventListener('click', () => storeDialogAction(api.linuxStoreLibrary));
 byId('linux-store-connect').addEventListener('submit', event => {
   event.preventDefault();
@@ -2270,10 +2297,8 @@ byId('grid-remove').addEventListener('click', event => saveGridKey(event.current
 byId('grid-preferences').addEventListener('click', event => perform(event.currentTarget, api.gridPreferences));
 byId('game-play').addEventListener('click', event => {
   const game = previewStoreGame;
-  return perform(event.currentTarget, async () => {
-    if (!game) return api.play(selectedGame);
-    await queueStoreGame(game.provider, game.id);
-  });
+  if (!game) return playFromButton(event.currentTarget, selectedGame);
+  return perform(event.currentTarget, () => queueStoreGame(game.provider, game.id));
 });
 byId('game-compatibility').addEventListener('click', event =>
   perform(event.currentTarget, () => api.gameCompatibilityLink(compatibilityView?.result?.appId)));

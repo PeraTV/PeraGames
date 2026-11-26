@@ -40,12 +40,14 @@ function loginCode(provider, input) {
   } else if (provider === 'gog' && value.startsWith('https://')) {
     const url = new URL(value);
     value = url.origin === 'https://embed.gog.com' && url.pathname === '/on_login_success' ? url.searchParams.get('code') : '';
-  } else if (provider === 'amazon' && value.startsWith('https://')) {
-    const url = new URL(value);
-    value = ['https://amazon.com', 'https://www.amazon.com'].includes(url.origin)
+  } else if (provider === 'amazon' && /^https?:/i.test(value)) {
+    const url = URL.canParse(value) ? new URL(value) : null;
+    value = url && ['https://amazon.com', 'https://www.amazon.com'].includes(url.origin) && !url.username && !url.password
       ? url.searchParams.get('openid.oa2.authorization_code') : '';
   }
-  if (typeof value !== 'string' || !/^[A-Za-z0-9_.~-]{12,300}$/.test(value)) throw new Error('Código de login inválido.');
+  if (typeof value !== 'string' || !/^[A-Za-z0-9_.~-]{12,300}$/.test(value)) {
+    throw new Error(provider === 'amazon' ? 'Copie a URL inteira da última página após entrar na Amazon.' : 'Código de login inválido.');
+  }
   return value;
 }
 
@@ -159,10 +161,13 @@ async function connect(provider, config, input) {
   if (provider === 'gog') await gogCredentials(config, code);
   else if (provider === 'amazon') {
     const session = amazonSessions.get(config.dir);
-    amazonSessions.delete(config.dir);
-    if (!session || session.expires < Date.now()) throw new Error('Abra o login da Amazon novamente.');
+    if (!session || session.expires < Date.now()) {
+      amazonSessions.delete(config.dir);
+      throw new Error('Abra o login da Amazon novamente.');
+    }
     await command(config, ['register', '--code', code, '--client-id', session.client_id,
       '--code-verifier', session.code_verifier, '--serial', session.serial], false);
+    amazonSessions.delete(config.dir);
   }
   else await command(config, ['auth', '--code', code], false);
 }
@@ -211,39 +216,99 @@ async function install(provider, config, id, folder, progress) {
 }
 
 const quoteWrapper = argument => "'" + argument.replaceAll("'", "'\"'\"'") + "'";
-const epicRunnerScript = '"$@"; result=$?; if [ "$result" -ne 0 ]; then printf "\\nPERAGAMES_RUNNER_EXIT=%s\\n" "$result" >&2; fi; exit "$result"';
+const runnerScript = 'printf "\\nPERAGAMES_RUNNER_START\\n" >&2; "$@"; result=$?; printf "\\nPERAGAMES_RUNNER_EXIT=%s\\n" "$result" >&2; exit "$result"';
 
-function epicLaunchMonitor(onFailure) {
+function launchReason(line) {
+  if (/game is out of date|update required/i.test(line)) return 'update';
+  if (/login failed|failed to (?:log in|login)|not logged in|authentication failed/i.test(line)) return 'signin';
+  if (/not currently installed|install directory.*deleted|cannot launch.*not installed|installation path doesn't exist|fuel\.json doesn't exist|executable not found/i.test(line)) return 'missing';
+  if (/bwrap:|pressure-vessel.*(?:error|failed)|failed to.*(?:runtime|proton)|unprivileged user namespace/i.test(line)) return 'runtime';
+}
+
+function storeLaunchMonitor(onStatus, { direct = false, wrapped = false } = {}) {
   let reason;
   let reported = false;
+  let started = direct ? Date.now() : 0;
+  const early = () => Date.now() - started < 12000;
   const report = fallback => {
     if (reported) return;
     reported = true;
-    onFailure(reason || fallback);
+    onStatus(reason || fallback);
   };
   return {
     onLine(line) {
-      if (/^PERAGAMES_RUNNER_EXIT=\d+$/.test(line)) report('runner');
-      else if (/game is out of date|update required/i.test(line)) reason = 'update';
-      else if (/login failed|failed to (?:log in|login)|not logged in|authentication failed/i.test(line)) reason = 'signin';
-      else if (/not currently installed|install directory.*deleted|cannot launch.*not installed/i.test(line)) reason = 'missing';
-      else if (/bwrap:|pressure-vessel.*(?:error|failed)|failed to.*(?:runtime|proton)|unprivileged user namespace/i.test(line)) reason = 'runtime';
+      if (line === 'PERAGAMES_RUNNER_START') {
+        started = Date.now();
+        onStatus('runner-start');
+      } else if (/^PERAGAMES_RUNNER_EXIT=\d+$/.test(line)) {
+        if (reason || !line.endsWith('=0')) report('runner');
+        else if (early()) report('early-exit');
+      } else reason = launchReason(line) || reason;
     },
     onClose(code, signal) {
-      if (code || signal) report('store');
+      if (reason || code || signal) report(direct || started ? 'runner' : 'store');
+      else if (direct && early()) report('early-exit');
+      else if (wrapped && !started) report('store');
     }
   };
 }
 
-function play(provider, config, { id, folder, umu, environment, onFailure }) {
+async function playEpicOnLinux(config, id, runner, environment, onStatus) {
+  let parameters;
+  try {
+    const { stdout } = await runHostTool(config.tool, [...config.baseArgs, 'launch', id, '--no-wine', '--json'], {
+      environment: config.environment, hostCwd: config.dir, timeout: 45000, maxBuffer: 256 * 1024
+    });
+    parameters = JSON.parse(stdout);
+  } catch (error) {
+    const reason = String(error.stderr || '').split(/[\r\n]/).map(launchReason).filter(Boolean).at(-1);
+    onStatus(reason || (error.killed ? 'store-timeout' : 'store'));
+    return false;
+  }
+  const { game_directory: directory, working_directory: cwd, game_executable: executable,
+    game_parameters: gameArgs, user_parameters: userArgs, egl_parameters: epicArgs } = parameters || {};
+  if (parameters?.pre_launch_command) return null;
+  if (typeof directory !== 'string' || !path.isAbsolute(directory) || typeof cwd !== 'string' || !path.isAbsolute(cwd) ||
+      typeof executable !== 'string' || !executable) {
+    onStatus('missing');
+    return false;
+  }
+  const file = path.resolve(directory, executable);
+  if (!await fileExists(file) && !await runHostTool('test', ['-f', file], { timeout: 5000 }).then(() => true, () => false)) {
+    onStatus('missing');
+    return false;
+  }
+  const args = [gameArgs, userArgs, epicArgs].flat().filter(value => typeof value === 'string');
+  const overrides = Object.fromEntries(Object.entries(parameters.environment || {}).filter(([key, value]) =>
+    /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) && typeof value === 'string' && !value.includes('\0')));
+  onStatus('runner-start');
+  try {
+    const wrapper = overrides.LEGENDARY_WRAPPER_EXE?.trim();
+    await launch(runner, [...(wrapper ? [wrapper] : []), file, ...args], {
+      cwd, hostCwd: cwd, environment: { ...overrides, ...environment }, ...storeLaunchMonitor(onStatus, { direct: true })
+    });
+  } catch {
+    onStatus('runner');
+    return false;
+  }
+  return true;
+}
+
+async function play(provider, config, { id, folder, umu, environment, onStatus }) {
+  if (provider === 'epic' && process.platform === 'linux' && umu && onStatus) {
+    const result = await playEpicOnLinux(config, id, umu, environment, onStatus);
+    if (result !== null) return result;
+  }
   const args = provider === 'gog' ? ['launch', folder, id, '--platform', process.platform === 'darwin' ? 'osx' : 'windows'] : ['launch', id];
-  const monitored = provider === 'epic' && onFailure;
-  const command = monitored && umu ? ['/bin/sh', '-c', epicRunnerScript, 'peragames-epic', umu] : [umu];
+  const monitored = onStatus && ['epic', 'amazon'].includes(provider);
+  const command = monitored && umu ? ['/bin/sh', '-c', runnerScript, 'peragames-runner', umu] : [umu];
   const wrapper = umu ? ['--no-wine', '--wrapper', command.map(quoteWrapper).join(' ')] : [];
-  return launch(config.tool, [...config.baseArgs, ...args, ...wrapper], {
+  await launch(config.tool, [...config.baseArgs, ...args, ...wrapper], {
     environment: { ...config.environment, ...environment },
-    ...(monitored ? epicLaunchMonitor(onFailure) : {})
+    hostCwd: config.dir,
+    ...(monitored ? storeLaunchMonitor(onStatus, { wrapped: Boolean(umu) }) : {})
   });
+  return true;
 }
 
 module.exports = { storeConfig, storeGameId, loginCode, loginUrl, library, connect, install, play, gogGameFolder };

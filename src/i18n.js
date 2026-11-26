@@ -465,6 +465,21 @@ Baixar launcher oficial|Download official launcher
 Configurar atalho do launcher oficial|Set up official launcher shortcut
 Preparando {name}. No primeiro uso do Proton, pode levar alguns minutos.|Preparing {name}. The first Proton launch can take a few minutes.
 Preparando {name}.|Preparing {name}.
+Iniciando…|Starting…
+Wine ou Proton está iniciando {name}.|Wine or Proton is starting {name}.
+{store} pediu uma atualização para {name}. Na lista da loja, selecione Atualizar jogo.|{store} requires an update for {name}. Select Update game in the store library.
+O login em {store} falhou ao abrir {name}. Conecte a conta novamente em Lojas.|{store} sign-in failed while opening {name}. Reconnect the account in Stores.
+Os arquivos de {name} não foram encontrados. Confira a instalação em {store}.|The files for {name} could not be found. Check the installation in {store}.
+{name} encerrou logo após iniciar. Tente outra versão do Wine ou Proton nas opções do jogo.|{name} closed shortly after starting. Try another Wine or Proton version in the game settings.
+{store} demorou para responder ao abrir {name}. Confira a conexão e tente novamente.|{store} took too long to respond while starting {name}. Check your connection and try again.
+{store} não conseguiu abrir {name}.|{store} could not start {name}.
+Clique em Abrir login no navegador e entre na sua conta Amazon.|Click Open sign-in in browser and sign in to your Amazon account.
+Depois que o navegador redirecionar, copie o endereço inteiro da última página com Ctrl+L e Ctrl+C.|After the browser redirects, select and copy the entire address of the last page.
+Volte ao PeraGames e clique em Colar do clipboard. Depois, clique em Vincular conta.|Return to PeraGames and click Paste from clipboard. Then click Link account.
+Colar do clipboard|Paste from clipboard
+URL de retorno do login da Amazon|Amazon sign-in return URL
+URL colada. Clique em Vincular conta.|URL pasted. Click Link account.
+Copie a URL inteira da última página após entrar na Amazon.|Copy the entire address of the last page after signing in to Amazon.
 A Epic pediu uma atualização para {name}. Abra a lista da Epic no PeraGames e selecione Atualizar jogo.|Epic requires an update for {name}. Open the Epic library in PeraGames and choose Update game.
 O login da Epic falhou ao abrir {name}. Conecte a conta novamente em Lojas.|Epic sign-in failed when opening {name}. Reconnect your account in Stores.
 O Legendary não encontrou os arquivos de {name}. Confira a instalação na lista da Epic.|Legendary could not find the files for {name}. Check the installation in the Epic library.

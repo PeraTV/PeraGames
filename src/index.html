@@ -564,10 +564,17 @@
         <button class="button" id="linux-store-load">Sincronizar jogos da conta</button>
       </div>
       <form id="linux-store-connect">
-        <p id="linux-store-amazon-help" hidden>Entre no site oficial da Amazon e cole a URL final do navegador abaixo.</p>
+        <ol id="linux-store-amazon-help" hidden>
+          <li>Clique em Abrir login no navegador e entre na sua conta Amazon.</li>
+          <li>Depois que o navegador redirecionar, copie o endereço inteiro da última página com Ctrl+L e Ctrl+C.</li>
+          <li>Volte ao PeraGames e clique em Colar do clipboard. Depois, clique em Vincular conta.</li>
+        </ol>
         <p id="linux-store-epic-help" hidden>Depois de entrar na Epic, o navegador pode exibir uma página com um código em texto. Isso faz parte do login. Copie todo o conteúdo da página, incluindo as chaves { }, e cole abaixo para importar seus jogos.</p>
-        <label>Código ou URL de retorno do login <input id="linux-store-code" type="password" maxlength="1600" autocomplete="off" required></label>
-        <button class="button" type="submit">Vincular conta</button>
+        <label><span id="linux-store-code-label">Código ou URL de retorno do login</span><input id="linux-store-code" type="password" maxlength="8192" autocomplete="off" required></label>
+        <div class="actions">
+          <button class="button" id="linux-store-amazon-paste" type="button" hidden>Colar do clipboard</button>
+          <button class="button primary" type="submit">Vincular conta</button>
+        </div>
       </form>
       <label>Pesquisar jogos <input id="linux-store-search" type="search"></label>
       <div id="linux-store-games"></div>

@@ -14,7 +14,7 @@ const vm = require('node:vm');
 const { readFileSync } = require('node:fs');
 const { createRequire } = require('node:module');
 
-test('avisa quando a Epic pede atualização ou quando o Proton falha após o Legendary sair', async () => {
+test('detecta o início e falhas do runner em jogos da Amazon', async () => {
   const moduleFile = require.resolve('../src/linux-stores');
   const requireStore = createRequire(moduleFile);
   const moduleExports = {};
@@ -28,19 +28,56 @@ test('avisa quando a Epic pede atualização ou quando o Proton falha após o Le
   } : requireStore(name);
   vm.runInNewContext(readFileSync(moduleFile, 'utf8'), { require: load, process, module: moduleExports });
   const failures = [];
-  const play = () => moduleExports.exports.play('epic', { tool: 'legendary', baseArgs: [] }, {
-    id: 'game-id', umu: '/apps/umu run', onFailure: reason => failures.push(reason)
+  const play = () => moduleExports.exports.play('amazon', { tool: 'nile', baseArgs: [] }, {
+    id: 'game-id', umu: '/apps/umu run', onStatus: reason => failures.push(reason)
   });
   await play();
   processMonitor.onLine('Game is out of date, please update');
   processMonitor.onClose(1);
   await play();
+  processMonitor.onLine('PERAGAMES_RUNNER_START');
   processMonitor.onLine('bwrap: No permissions to create a new namespace');
   processMonitor.onLine('PERAGAMES_RUNNER_EXIT=1');
   processMonitor.onClose(0);
   await play();
+  processMonitor.onLine('Unable to launch a game: fuel.json doesn\'t exist');
   processMonitor.onClose(0);
-  assert.deepEqual(failures, ['update', 'runtime']);
+  assert.deepEqual(failures, ['update', 'runner-start', 'runtime', 'missing']);
+});
+
+test('usa os parâmetros da Epic para supervisionar o Proton diretamente no Linux', async () => {
+  const moduleFile = require.resolve('../src/linux-stores');
+  const requireStore = createRequire(moduleFile);
+  const moduleExports = {};
+  const notices = [];
+  let monitor;
+  const system = {
+    runHostTool: async (tool, args) => {
+      assert.equal(tool, 'legendary');
+      assert.deepEqual(Array.from(args), ['launch', 'game-id', '--no-wine', '--json']);
+      return { stdout: JSON.stringify({ game_executable: 'Game.exe', game_directory: '/games/test',
+        working_directory: '/games/test', game_parameters: ['-windowed'], egl_parameters: ['-AUTH_TYPE=exchangecode'],
+        environment: { WINEPREFIX: '/old-prefix' } }) };
+    },
+    fileExists: async () => true,
+    launch: async (runner, args, options) => {
+      assert.equal(runner, '/tools/umu-run');
+      assert.deepEqual(Array.from(args), ['/games/test/Game.exe', '-windowed', '-AUTH_TYPE=exchangecode']);
+      assert.equal(options.hostCwd, '/games/test');
+      assert.equal(options.environment.WINEPREFIX, '/pfx');
+      monitor = options;
+    }
+  };
+  vm.runInNewContext(readFileSync(moduleFile, 'utf8'), {
+    require: name => name === './system' ? system : name === 'node:path' ? path.posix : requireStore(name),
+    process: { platform: 'linux' }, module: moduleExports
+  });
+  const launched = await moduleExports.exports.play('epic', { tool: 'legendary', baseArgs: [] }, {
+    id: 'game-id', umu: '/tools/umu-run', environment: { WINEPREFIX: '/pfx' }, onStatus: state => notices.push(state)
+  });
+  assert.equal(launched, true);
+  monitor.onClose(0);
+  assert.deepEqual(notices, ['runner-start', 'early-exit']);
 });
 
 test('usa o umu preparado pelo PeraGames para abrir o jogo com o Proton selecionado', async t => {
@@ -121,7 +158,8 @@ test('separa jogos da Steam e dos emuladores da seleção de Proton', () => {
 test('aceita os formatos de login esperados e rejeita origens e identificadores inválidos', () => {
   const code = 'demo-authorization-code';
   assert.equal(loginCode('amazon', 'https://www.amazon.com/?openid.oa2.authorization_code=' + code), code);
-  assert.throws(() => loginCode('amazon', 'https://www.amazon.com.other.test/?openid.oa2.authorization_code=' + code), /inválido/);
+  assert.throws(() => loginCode('amazon', 'https://www.amazon.com.other.test/?openid.oa2.authorization_code=' + code), /URL inteira/);
+  assert.throws(() => loginCode('amazon', 'https://www.amazon.com/ap/signin'), /URL inteira/);
   assert.equal(loginCode('epic', JSON.stringify({ authorizationCode: code })), code);
   assert.equal(loginCode('gog', 'https://embed.gog.com/on_login_success?origin=client&code=' + code), code);
   assert.throws(() => loginCode('gog', 'https://other.example/on_login_success?code=' + code), /inválido/);

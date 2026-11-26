@@ -25,9 +25,9 @@ async function openWebLink(url, shell) {
   catch { await shell.openExternal(url); }
 }
 
-async function runHostTool(file, args, { environment = {}, input, ...options } = {}) {
-  const [command, commandArgs] = hostCommand(file, args, { environment });
-  const settings = { env: { ...process.env, ...environment }, ...options };
+async function runHostTool(file, args, { environment = {}, input, hostCwd, ...options } = {}) {
+  const [command, commandArgs] = hostCommand(file, args, { cwd: hostCwd, environment });
+  const settings = { cwd: inFlatpak ? undefined : hostCwd, env: { ...process.env, ...environment }, ...options };
   if (input === undefined) return run(command, commandArgs, settings);
   return new Promise((resolve, reject) => {
     const child = execFile(command, commandArgs, settings, (error, stdout) => error ? reject(error) : resolve({ stdout }));

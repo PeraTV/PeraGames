@@ -386,8 +386,11 @@ body[data-palette]:not([data-palette="amber"]) :focus-visible { outline-color: v
 .setup-fields p { margin-block: 7px 12px; overflow-wrap: anywhere; font-size: .9em; }
 #game-setup-windows .actions { margin-top: 7px; }
 #game-setup-status { min-height: 1.4em; }
-#linux-store-connect { display: flex; align-items: end; gap: 8px; margin-block: 12px; }
-#linux-store-connect label { flex: 1; min-width: 0; }
+#linux-store-connect { display: grid; gap: 8px; margin-block: 12px; }
+#linux-store-connect label { margin: 0; min-width: 0; }
+#linux-store-code { width: 100%; }
+#linux-store-amazon-help { margin: 4px 0; padding-inline-start: 22px; color: var(--muted); }
+#linux-store-amazon-help li + li { margin-top: 4px; }
 #linux-store-games { display: grid; gap: 6px; margin-top: 12px; }
 .linux-store-game { display: flex; align-items: center; gap: 8px; padding: 7px; border-bottom: 1px solid var(--line); }
 .linux-store-game strong { min-width: 0; flex: 1; }
