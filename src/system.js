@@ -10,7 +10,7 @@ const inFlatpak = process.platform === 'linux' && Boolean(process.env.FLATPAK_ID
 const macApps = {
   steam: 'Steam', epic: 'Epic Games Launcher', gog: 'GOG Galaxy', heroic: 'Heroic',
   battle: 'Battle.net', discord: 'Discord', obs: 'OBS', dolphin: 'Dolphin',
-  retroarch: 'RetroArch', pcsx2: 'PCSX2', ppsspp: 'PPSSPP'
+  retroarch: 'RetroArch', pcsx2: 'PCSX2', ppsspp: 'PPSSPP', rpcs3: 'RPCS3', shadps4: 'shadPS4', xemu: 'xemu'
 };
 
 function hostCommand(file, args, { cwd, environment = {} } = {}) {
@@ -141,6 +141,84 @@ async function steamManifests(roots, readManifest) {
 function steamGames(roots) {
   return steamManifests(roots, ({ appId, name, text }) => Number(readVdfString(text, 'StateFlags')) & 4 ?
     { id: 'steam-' + appId, appId, name, source: 'Steam' } : null);
+}
+
+function readSteamShortcuts(buffer) {
+  let offset = 0;
+  function string(wide = false) {
+    const start = offset;
+    if (wide) {
+      while (offset + 1 < buffer.length && buffer.readUInt16LE(offset)) offset += 2;
+      if (offset + 1 >= buffer.length) throw new Error('Incomplete shortcut string');
+    } else {
+      offset = buffer.indexOf(0, offset);
+      if (offset < 0) throw new Error('Incomplete shortcut string');
+    }
+    const value = buffer.toString(wide ? 'utf16le' : 'utf8', start, offset);
+    offset += wide ? 2 : 1;
+    return value;
+  }
+  function object(depth) {
+    if (depth > 6) throw new Error('Invalid shortcut nesting');
+    const values = Object.create(null);
+    while (offset < buffer.length) {
+      const type = buffer[offset++];
+      if (type === 8) return values;
+      const key = string().toLowerCase();
+      if (type === 0) values[key] = object(depth + 1);
+      else if (type === 1 || type === 5) values[key] = string(type === 5);
+      else if (type === 2) { values[key] = buffer.readUInt32LE(offset); offset += 4; }
+      else if ([3, 4, 6, 7, 10].includes(type)) offset += type === 7 || type === 10 ? 8 : 4;
+      else throw new Error('Unsupported shortcut field');
+    }
+    if (depth === 0) return values;
+    throw new Error('Incomplete shortcut object');
+  }
+  try {
+    return Object.values(object(0).shortcuts || {}).filter(item => Number.isInteger(item?.appid) && item.appid > 0 &&
+      typeof item.appname === 'string' && item.appname.trim() && typeof item.exe === 'string' && item.exe.trim());
+  } catch { return []; }
+}
+
+async function steamShortcuts(roots, profile) {
+  const games = new Map();
+  for (const root of roots) {
+    const recent = await fs.readFile(path.join(root, 'config', 'loginusers.vdf'), 'utf8').catch(() => '');
+    const active = [...recent.matchAll(/"(7656\d{13})"\s*\{([^{}]*)\}/g)].find(match => /"MostRecent"\s*"1"/i.test(match[2]))?.[1];
+    const selected = active || (/^7656\d{13}$/.test(profile || '') ? profile : undefined);
+    const users = path.join(root, 'userdata');
+    const folders = selected ? [String(BigInt(selected) & 0xffffffffn)] :
+      (await fs.readdir(users).catch(() => [])).filter(folder => /^\d+$/.test(folder));
+    for (const user of folders) {
+      const file = path.join(users, user, 'config', 'shortcuts.vdf');
+      const stats = await fs.stat(file).catch(() => null);
+      if (!stats?.isFile() || stats.size > 8 * 1024 * 1024) continue;
+      const buffer = await fs.readFile(file).catch(() => null);
+      if (!buffer || buffer.length > 8 * 1024 * 1024) continue;
+      for (const item of readSteamShortcuts(buffer)) {
+        const steamShortcut = String((BigInt(item.appid) << 32n) | 0x02000000n);
+        games.set(steamShortcut, { id: 'shortcut-' + steamShortcut, steamShortcut, name: item.appname, source: 'Steam · Não Steam' });
+      }
+    }
+  }
+  return [...games.values()];
+}
+
+async function gpuModels(platform) {
+  const read = async (file, args) => runHostTool(file, args, { timeout: 10000, maxBuffer: 512 * 1024 })
+    .then(({ stdout }) => stdout, () => '');
+  if (platform === 'win32') {
+    return (await read('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+      '[Console]::OutputEncoding = [Text.Encoding]::UTF8; Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name'])).split(/\r?\n/);
+  }
+  if (platform === 'linux') {
+    return (await read('lspci', ['-nn'])).split(/\r?\n/)
+      .filter(line => /\b(?:VGA compatible controller|3D controller|Display controller)\b/i.test(line))
+      .map(line => line.replace(/^.*?\]:\s*/, '').replace(/^.*?controller:\s*/i, '').replace(/\s+\[[\da-f]{4}:[\da-f]{4}\].*$/i, ''));
+  }
+  const report = await read('/usr/sbin/system_profiler', ['SPDisplaysDataType', '-json']);
+  try { return JSON.parse(report).SPDisplaysDataType.map(item => item.sppci_model || item._name); }
+  catch { return []; }
 }
 
 function steamDownloads(roots) {
@@ -329,5 +407,5 @@ function launch(file, args = [], { cwd = path.dirname(file), visible = false, en
   });
 }
 
-module.exports = { getSteamRoots, steamGames, steamDownloads, readLibraryFolders, readVdfString, detectStores, fileExists, launch, isMacBundle,
+module.exports = { getSteamRoots, steamGames, steamShortcuts, readSteamShortcuts, gpuModels, steamDownloads, readLibraryFolders, readVdfString, detectStores, fileExists, launch, isMacBundle,
   macApps, findLinuxCommand, openWebLink, runHostTool, flathubId, installFlatpak, openLinuxSoftware };

@@ -44,7 +44,8 @@ function decorateTvIcons() {
 const steamApp = 'https://cdn.akamai.steamstatic.com/steam/apps/';
 const groups = new Map([['Lojas', 'Lojas de jogos'], ['Ferramentas', 'Ferramentas'], ['Emuladores', 'Emuladores']]);
 const tabs = [['all', 'Explorar'], ...groups, ['installed', 'Instalados']];
-const romEmulators = [['dolphin', 'Dolphin'], ['pcsx2', 'PCSX2'], ['ppsspp', 'PPSSPP'], ['retroarch', 'RetroArch']];
+const romEmulators = [['dolphin', 'Dolphin'], ['pcsx2', 'PCSX2'], ['ppsspp', 'PPSSPP'], ['rpcs3', 'RPCS3'],
+  ['shadps4', 'shadPS4'], ['xemu', 'xemu'], ['xenia', 'Xenia'], ['retroarch', 'RetroArch']];
 const brandDomains = {
   steam: 'steampowered.com', epic: 'store.epicgames.com', gog: 'gog.com', amazon: 'amazongames.com',
   heroic: 'heroicgameslauncher.com', xbox: 'xbox.com', battle: 'battle.net', ea: 'ea.com', ubisoft: 'ubisoft.com',
@@ -74,6 +75,10 @@ const systems = [
   ['gamecube', 'Nintendo GameCube', 'Dolphin', 'dolphin', 'theme-gamecube', 'Nintendo_GameCube_symbol_logo.svg'],
   ['pcsx2', 'PlayStation 2', 'PCSX2', 'pcsx2', 'theme-steam', 'PlayStation_2_logo.svg'],
   ['ppsspp', 'PlayStation Portable', 'PPSSPP', 'ppsspp', 'theme-psp', 'PSP_Logo.svg'],
+  ['rpcs3', 'PlayStation 3', 'RPCS3', 'rpcs3', 'theme-steam'],
+  ['shadps4', 'PlayStation 4', 'shadPS4', 'shadps4', 'theme-steam'],
+  ['xemu', 'Xbox', 'xemu', 'xemu', 'theme-arcade'],
+  ['xenia', 'Xbox 360', 'Xenia', 'xenia', 'theme-arcade'],
   ['retroarch', 'Sistemas clássicos', 'RetroArch', 'retroarch', 'theme-arcade']
 ];
 const androidSystem = ['android', 'Android', 'Atalhos de jogos', 'android', 'theme-arcade', 'Android robot.svg'];
@@ -258,18 +263,7 @@ function addLibraryArtwork(art, game) {
   const image = el('img', 'game-card-cover');
   image.alt = '';
   image.loading = 'lazy';
-  const store = game.provider || game.origin;
-  const storeCover = !game.customCover && ['epic', 'gog', 'amazon'].includes(store);
-  let ambient;
-  if (storeCover) {
-    art.classList.add('store-game-art');
-    ambient = el('img', 'game-card-ambient');
-    ambient.alt = '';
-    ambient.loading = 'lazy';
-    ambient.hidden = true;
-    art.append(ambient);
-  }
-  setArt(image, gameArtwork(game), 0, ambient, !game.emulator && !game.customCover);
+  setArt(image, gameArtwork(game), 0, undefined, !game.emulator && !game.customCover);
   art.append(image);
 }
 
@@ -295,7 +289,7 @@ function gameCard(game) {
   feature.title = t('Personalizar destaque com {name}', { name: game.name });
   actions.append(play, favorite);
   if (!game.emulator) actions.append(feature);
-  if (!game.appId) {
+  if (!game.appId && !game.steamShortcut) {
     actions.append(button(t('Remover'), node => {
       if (window.confirm(t('Remover este jogo da coleção do PeraGames?'))) perform(node, () => api.removeGame(game.id));
     }, 'plain'));
@@ -308,7 +302,7 @@ function gameCard(game) {
 const canInstallStoreGame = game => state.platform !== 'darwin' || game.provider !== 'amazon';
 const storeInstallLabel = game => game.provider === 'steam' ? 'Instalar pela Steam' : 'Instalar jogo';
 const libraryOrigins = { steam: 'Steam', epic: 'Epic Games', gog: 'GOG', amazon: 'Amazon Games',
-  exe: 'Arquivos EXE', local: 'Jogos locais' };
+  'steam-shortcut': 'Atalhos não Steam', recomp: 'Jogos Recomp', exe: 'Arquivos EXE', local: 'Jogos locais' };
 
 function storeLibraryCard(game) {
   const card = el('article', 'game-card unavailable-game');
@@ -433,9 +427,22 @@ async function loadGridCover(game, view) {
   }
 }
 
+const gameLaunchMessages = new Map();
+function renderGameLaunchFeedback() {
+  const feedback = byId('game-launch-feedback');
+  feedback.textContent = gameLaunchMessages.get(selectedGame) || '';
+  feedback.hidden = !feedback.textContent;
+}
+
 function renderGameDetails() {
+  renderGameLaunchFeedback();
   const game = previewStoreGame || [...state.games, ...(state.roms || [])].find(item => item.id === selectedGame);
   if (!game) return;
+  const recomp = byId('game-recomp');
+  recomp.hidden = !game.canMarkRecomp;
+  recomp.setAttribute('aria-pressed', String(Boolean(game.recomp)));
+  recomp.textContent = t(game.recomp ? 'Desmarcar Recomp' : 'Marcar como Recomp');
+  byId('game-uninstall').hidden = !game.canUninstall;
   const info = game.info || {};
   byId('game-title').textContent = game.name;
   const favorite = byId('game-favorite');
@@ -510,7 +517,8 @@ function showProtonSettings(settings) {
     : t('Este jogo abre no Linux. Para usar Proton, indique o executável da versão Windows.');
   byId('proton-executable-reset').hidden = !settings.executable;
   byId('proton-prefix-text').textContent = settings.prefix
-    ? t('Prefixo Wine: {folder}', { folder: settings.prefix }) : t('Prefixo separado para este jogo');
+    ? t('Prefixo Wine: {folder}', { folder: settings.prefix }) : t(settings.separateRunners
+      ? 'Wine e Proton usam pastas separadas para os dados deste jogo.' : 'Prefixo separado para este jogo');
   byId('proton-prefix-reset').hidden = !settings.prefix;
 }
 
@@ -1132,6 +1140,7 @@ function renderRoms() {
   const availableSystems = state.platform === 'win32' ? [...systems, androidSystem] : systems;
   const androidOption = byId('rom-emulator').querySelector('[value="android"]');
   androidOption.hidden = state.platform !== 'win32';
+  byId('rom-emulator').querySelector('[value="xenia"]').disabled = state.platform !== 'win32';
   const options = availableSystems.map(([id, name, label, emulator, theme, mark]) => {
     const tab = button('', () => {
       romFilter = id;
@@ -1158,7 +1167,10 @@ function renderRoms() {
   const configure = byId('rom-configure');
   const emulator = selected?.[3] || byId('rom-emulator').value;
   const installed = state.stores.find(item => item.id === emulator)?.installed;
-  configure.hidden = Boolean(installed) || emulator === 'android';
+  const unavailable = emulator === 'xenia' && state.platform !== 'win32';
+  configure.hidden = Boolean(installed) || emulator === 'android' || unavailable;
+  byId('add-roms').disabled = unavailable;
+  byId('add-rom-folder').disabled = unavailable;
   byId('add-roms').textContent = emulator === 'android' ? t('+ Adicionar atalhos') : t('+ Adicionar ROMs');
   byId('add-rom-folder').hidden = emulator === 'android';
   configure.textContent = t('Localizar {name}', { name: romEmulators.find(([id]) => id === emulator)?.[1] || t('emulador') });
@@ -1197,7 +1209,7 @@ function allTvGames() {
 
 const tvStoreGames = () => state.tv?.showUninstalled === false ? [] : availableStoreGames();
 const tvGameKey = game => game?.provider ? `${game.provider}-${game.id}` : game?.id;
-const currentTvPage = games => games.slice(tvLibraryPage * tvPageSize, (tvLibraryPage + 1) * tvPageSize);
+const currentTvPage = games => theaterCategory === 'pc' ? games : games.slice(tvLibraryPage * tvPageSize, (tvLibraryPage + 1) * tvPageSize);
 
 function tvLayout() {
   return ['cockpit', 'gallery'].includes(state.tv?.layout) ? state.tv.layout : 'cinema';
@@ -1226,7 +1238,7 @@ function renderTvSystems() {
     tile.dataset.system = id;
     tile.setAttribute('aria-pressed', String(theaterCategory === 'rom' && theaterSystem === id));
     const image = el('img');
-    image.src = 'assets/tv/' + artwork[id] + '.jpg';
+    image.src = 'assets/tv/' + (artwork[id] || 'pc') + '.jpg';
     image.alt = '';
     tile.setAttribute('aria-label', t(name));
     tile.append(image, el('span', '', t(name)));
@@ -1257,8 +1269,10 @@ function selectTheaterGame(game) {
   byId('theater-favorite-label').textContent = game?.favorite ? t('Remover dos favoritos') : t('Favoritar');
   byId('tv-action-a').disabled = !canPlay;
   byId('tv-action-y').disabled = !game;
-  setArt(byId('theater-art'), game ? gameBanners(game, tvLayout() !== 'cockpit') : [], 900, byId('theater-ambient'));
-  setArt(byId('theater-portrait'), game ? gameArtwork(game) : [], 0, byId('theater-poster-ambient'));
+  if (theaterCategory !== 'pc') {
+    setArt(byId('theater-art'), game ? gameBanners(game, tvLayout() !== 'cockpit') : [], 900, byId('theater-ambient'));
+    setArt(byId('theater-portrait'), game ? gameArtwork(game) : [], 0, byId('theater-poster-ambient'));
+  }
   const tiles = [...byId('theater-deck').querySelectorAll('.tv-card')];
   const key = tvGameKey(game);
   const center = tiles.findIndex(tile => tile.dataset.game === key);
@@ -1269,7 +1283,7 @@ function selectTheaterGame(game) {
   }
   for (const [index, tile] of tiles.entries()) {
     tile.setAttribute('aria-pressed', String(tile.dataset.game === key));
-    if (tvLayout() === 'gallery') {
+    if (tvLayout() === 'gallery' && theaterCategory !== 'pc') {
       const half = Math.floor(tiles.length / 2);
       const offset = (index - center + half + tiles.length) % tiles.length - half;
       tile.dataset.offset = String(offset);
@@ -1336,6 +1350,7 @@ function renderGalleryLauncherOptions() {
 
 function renderTheater() {
   const layout = tvLayout();
+  const grid = theaterCategory === 'pc';
   byId('theater').dataset.layout = layout;
   byId('theater').dataset.category = theaterCategory;
   byId('tv-pc-label').textContent = t(layout === 'gallery' ? 'Biblioteca' : 'Jogos de PC');
@@ -1348,21 +1363,22 @@ function renderTheater() {
   }
   const titles = { home: layout === 'cockpit' ? 'Sua próxima partida' : 'Seus jogos',
     pc: 'Jogos de PC', rom: 'Biblioteca de emuladores', favorites: 'Favoritos', recent: 'Jogos recentes' };
-  byId('tv-shelf-title').textContent = t(titles[theaterCategory]);
-  renderTvSystems();
   const library = allTvGames();
-  const pages = Math.max(1, Math.ceil(library.length / tvPageSize));
+  const title = t(titles[theaterCategory]);
+  byId('tv-shelf-title').textContent = grid ? `${title} · ${t('{count} jogos', { count: library.length })}` : title;
+  renderTvSystems();
+  const pages = grid ? 1 : Math.max(1, Math.ceil(library.length / tvPageSize));
   tvLibraryPage = Math.min(tvLibraryPage, pages - 1);
   byId('tv-library-pages').hidden = pages === 1;
   byId('tv-page-prev').disabled = tvLibraryPage === 0;
   byId('tv-page-next').disabled = tvLibraryPage + 1 >= pages;
   byId('tv-page-count').textContent = t('Página {page} de {total}', { page: tvLibraryPage + 1, total: pages });
   const games = currentTvPage(library);
-  if (layout === 'gallery') renderGalleryLaunchers();
-  for (const id of ['gallery-prev', 'gallery-next']) byId(id).hidden = games.length < 2;
+  if (layout === 'gallery' && !grid) renderGalleryLaunchers();
+  for (const id of ['gallery-prev', 'gallery-next']) byId(id).hidden = grid || games.length < 2;
   const selected = games.find(game => tvGameKey(game) === tvGameKey(theaterGame)) || games[0];
   const positions = byId('tv-gallery-positions');
-  const showPositions = layout === 'gallery' && games.length > 1;
+  const showPositions = !grid && layout === 'gallery' && games.length > 1;
   positions.hidden = !showPositions;
   positions.replaceChildren(...(showPositions
     ? games.slice(0, 5).map(() => el('span', 'tv-position'))
@@ -1379,13 +1395,14 @@ function renderTheater() {
     tile.setAttribute('aria-label', game.provider ? `${game.name} · ${gameSource(game)} · ${t('Não instalado')}` : game.name);
     const image = el('img', 'tv-card-cover');
     image.alt = '';
+    if (grid) image.loading = 'lazy';
     image.loading = 'lazy';
     const ambient = el('img', 'tv-card-ambient');
     ambient.alt = '';
     ambient.hidden = true;
-    const preferPortrait = layout !== 'cockpit' && !game.emulator && !game.customCover;
-    setArt(image, gameArtwork(game), 0, ambient, preferPortrait);
-    if (layout === 'cockpit') {
+    const preferPortrait = (grid || layout !== 'cockpit') && !game.emulator && !game.customCover;
+    setArt(image, gameArtwork(game), 0, grid ? undefined : ambient, preferPortrait);
+    if (!grid && layout === 'cockpit') {
       const banner = el('img', 'tv-card-banner');
       banner.alt = '';
       banner.loading = 'lazy';
@@ -1776,7 +1793,8 @@ async function renderPreferencesTab(tab) {
   if (tab === 'diagnostics') {
     try {
       const report = await api.diagnostics();
-      const fields = [['Sistema operacional', report.system], ['Processador', report.processor], ['Memória', report.memory], ['Versão do PeraGames', report.version]];
+      const fields = [['Sistema operacional', report.system], ['Processador', report.processor], ['Placa de vídeo', report.gpu || t('Não identificada')],
+        ['Memória', report.memory], ['Versão do PeraGames', report.version]];
       byId('prefs-system-report').replaceChildren(...fields.map(([label, value]) => {
         const row = el('div', 'settings-card');
         row.append(el('dt', '', t(label)), el('dd', '', value));
@@ -1889,7 +1907,7 @@ api.onSteamDownloadsComplete(({ completed, jobs }) => {
     t('{count} jogos foram instalados pela Steam.', { count: completed.length }));
 });
 api.onSteamLaunchRequested(name => notify(t('Pedindo à Steam para abrir {name}.', { name })));
-api.onStoreLaunchStatus(({ name, provider, reason }) => {
+api.onStoreLaunchStatus(({ id, name, provider, reason }) => {
   const store = storeNames[provider] || provider;
   const messages = {
     preparing: 'Preparando {name}.',
@@ -1899,12 +1917,22 @@ api.onStoreLaunchStatus(({ name, provider, reason }) => {
     signin: 'O login em {store} falhou ao abrir {name}. Conecte a conta novamente em Lojas.',
     missing: 'Os arquivos de {name} não foram encontrados. Confira a instalação em {store}.',
     runtime: 'O ambiente do Proton falhou ao iniciar {name}.',
+    prefix: 'O Wine ou Proton não conseguiu usar a pasta de dados de {name}. Confira o prefixo nas opções do jogo.',
+    graphics: 'O ambiente gráfico falhou ao iniciar {name}.',
+    'windows-dll': 'O Windows não encontrou uma DLL necessária para {name}. Confira as dependências indicadas pelo projeto Recomp.',
+    'recomp-exit': 'O executável de {name} encerrou. Confira o arquivo escolhido e os arquivos exigidos pelo projeto Recomp.',
     runner: 'O Wine ou Proton encerrou {name} com erro.',
     'early-exit': '{name} encerrou logo após iniciar. Tente outra versão do Wine ou Proton nas opções do jogo.',
     'store-timeout': '{store} demorou para responder ao abrir {name}. Confira a conexão e tente novamente.',
     store: '{store} não conseguiu abrir {name}.'
   };
   const message = t(messages[reason] || messages.store, { name, store });
+  if (['preparing', 'preparing-proton', 'runner-start'].includes(reason)) gameLaunchMessages.delete(id);
+  else gameLaunchMessages.set(id, message);
+  if (selectedGame === id && byId('game-editor').open) {
+    renderGameLaunchFeedback();
+    if (gameLaunchMessages.has(id)) return;
+  }
   if (byId('linux-store-dialog').open) byId('linux-store-status').textContent = message;
   else notify(message);
 });
@@ -2314,6 +2342,13 @@ byId('game-play').addEventListener('click', event => {
 byId('game-compatibility').addEventListener('click', event =>
   perform(event.currentTarget, () => api.gameCompatibilityLink(compatibilityView?.result?.appId)));
 byId('game-favorite').addEventListener('click', event => perform(event.currentTarget, () => api.favorite(selectedGame)));
+byId('game-recomp').addEventListener('click', event => perform(event.currentTarget, () => api.markRecomp(selectedGame)));
+byId('game-uninstall').addEventListener('click', async event => {
+  const id = selectedGame;
+  if (await perform(event.currentTarget, () => api.uninstallGame(id)) && !state.games.some(game => game.id === id)) {
+    byId('game-editor').close();
+  }
+});
 byId('game-info-source').addEventListener('click', event => perform(event.currentTarget, () => api.gameInfoSource(selectedGame)));
 byId('game-save-info').addEventListener('click', event => perform(event.currentTarget, () =>
   api.saveGameInfo({ id: selectedGame, description: byId('game-description').value }), t('Sinopse salva.')));

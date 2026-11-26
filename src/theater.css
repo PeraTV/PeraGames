@@ -29,6 +29,31 @@
 .tv-search-result small { color: var(--muted); }
 .tv-library-pages { align-self: end; display: flex; align-items: center; gap: 7px; white-space: nowrap; }
 .tv-library-pages .button { padding: 2px 8px; }
+#theater[data-layout][data-category="pc"] .theater-core {
+  grid-template: "shelf" minmax(0, 1fr) / minmax(0, 1fr);
+}
+#theater[data-layout][data-category="pc"] :is(.theater-stage, .tv-systems, .tv-shortcuts, #gallery-launchers) { display: none; }
+#theater[data-layout][data-category="pc"] .tv-shelf {
+  grid-area: shelf; position: relative; min-height: 0; pointer-events: auto; padding: 12px clamp(12px, 2vw, 30px);
+}
+#theater[data-layout][data-category="pc"] .tv-shelf h2 { display: flex; }
+#theater[data-layout][data-category="pc"] .theater-deck {
+  display: grid; flex: 1; height: auto; grid-template: none; grid-auto-rows: auto;
+  grid-template-columns: repeat(auto-fill, minmax(clamp(100px, 10vw, 156px), 1fr));
+  overflow: auto; align-items: start; justify-items: stretch; align-content: start; scroll-snap-type: none;
+}
+#theater[data-layout][data-category="pc"] .tv-card {
+  display: block; grid-area: auto; height: auto; width: 100%; max-height: none;
+  aspect-ratio: 2 / 3; transform: none; box-shadow: none;
+}
+#theater[data-layout][data-category="pc"] .tv-card img.tv-card-cover {
+  inset: 0; width: 100%; height: 100%; border-radius: inherit; object-fit: cover; object-position: center; transform: none;
+}
+#theater[data-layout][data-category="pc"] .tv-card img.tv-card-cover[hidden][src] { display: block !important; visibility: hidden; }
+#theater[data-layout][data-category="pc"] .tv-card span {
+  inset: auto 0 0; display: block; visibility: visible; transform: none; padding: 6px 8px;
+  font-size: clamp(12px, 1vw, 16px); text-align: left; color: #fff; background: #180c12d9;
+}
 #theater[data-layout="gallery"] .tv-library-pages { position: absolute; z-index: 2; top: 0; right: 8vw; pointer-events: auto; }
 .tv-card.tv-uninstalled img { opacity: .73; }
 body:not([data-color-uninstalled]) .tv-card.tv-uninstalled img { filter: grayscale(.8); }

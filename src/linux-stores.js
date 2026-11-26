@@ -219,6 +219,9 @@ const quoteWrapper = argument => "'" + argument.replaceAll("'", "'\"'\"'") + "'"
 const runnerScript = 'printf "\\nPERAGAMES_RUNNER_START\\n" >&2; "$@"; result=$?; printf "\\nPERAGAMES_RUNNER_EXIT=%s\\n" "$result" >&2; exit "$result"';
 
 function launchReason(line) {
+  if (/wine:.*(?:prefix|wineserver)|(?:system|user)\.reg.*(?:failed|error|denied)|prefix.*(?:not owned|permission denied|different architecture)/i.test(line)) return 'prefix';
+  if (/no vulkan|failed to (?:initialize|create).*vulkan|VK_ERROR_|no suitable (?:graphics|devices?)|failed to initialize graphics/i.test(line)) return 'graphics';
+  if (/toolmanifest\.vdf|steamrt[234].*(?:not found|unsupported)|Traceback \(most recent call last\)|^(?:[A-Za-z]+Error|Exception):/i.test(line)) return 'runtime';
   if (/game is out of date|update required/i.test(line)) return 'update';
   if (/login failed|failed to (?:log in|login)|not logged in|authentication failed/i.test(line)) return 'signin';
   if (/not currently installed|install directory.*deleted|cannot launch.*not installed|installation path doesn't exist|fuel\.json doesn't exist|executable not found/i.test(line)) return 'missing';
@@ -321,4 +324,26 @@ async function play(provider, config, { id, folder, umu, environment, onStatus }
   return true;
 }
 
-module.exports = { storeConfig, storeGameId, loginCode, loginUrl, library, connect, install, play, gogGameFolder };
+async function uninstall(game, config, shell) {
+  const { store, storeId, installBase, installFolder } = game;
+  if (!storeGameId(store, storeId)) throw new Error('Desinstalação indisponível para este jogo.');
+  if (store !== 'gog') {
+    await command(config, store === 'epic' ? ['-y', 'uninstall', storeId] : ['uninstall', storeId], false);
+    return;
+  }
+  const invalid = 'A pasta gerenciada da GOG não foi identificada.';
+  if (!installBase || !path.isAbsolute(installBase) || path.basename(installBase) !== 'GOG-' + storeId || !installFolder) {
+    throw new Error(invalid);
+  }
+  const [base, folder] = await Promise.all([fs.realpath(installBase), fs.realpath(installFolder)])
+    .catch(() => { throw new Error(invalid); });
+  const relative = path.relative(base, folder);
+  if (path.basename(base) !== 'GOG-' + storeId || relative === '..' || relative.startsWith('..' + path.sep) ||
+      path.isAbsolute(relative) || !await gogGameFolder(folder, storeId)) throw new Error(invalid);
+  try {
+    if (process.platform === 'linux') await runHostTool('gio', ['trash', '--', base], { timeout: 60000 });
+    else await shell.trashItem(base);
+  } catch { throw new Error('O sistema não conseguiu mover a pasta do jogo para a lixeira.'); }
+}
+
+module.exports = { storeConfig, storeGameId, loginCode, loginUrl, library, connect, install, uninstall, play, gogGameFolder };

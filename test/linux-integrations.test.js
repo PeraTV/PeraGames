@@ -5,14 +5,33 @@ const { mkdtemp, mkdir, writeFile, rm } = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 const { test } = require('node:test');
-const { findProtonVersions, isWindowsGame, protonEnvironment, windowsRunner } = require('../src/proton');
+const { findProtonVersions, isWindowsGame, protonEnvironment, storeGamePrefix, windowsRunner } = require('../src/proton');
 const { loginCode, storeGameId } = require('../src/linux-stores');
 const { releasePackages } = require('../src/proton-catalog');
 const { releaseAsset } = require('../src/store-tools');
 const { steamAccountGames } = require('../src/steam-account');
+const { readSteamShortcuts, steamShortcuts } = require('../src/system');
 const vm = require('node:vm');
 const { readFileSync } = require('node:fs');
 const { createRequire } = require('node:module');
+
+test('importa os atalhos não Steam da conta ativa e calcula o ID de inicialização', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'peragames-shortcuts-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const account = 76561198000000000n;
+  const folder = path.join(root, 'userdata', String(account & 0xffffffffn), 'config');
+  const shortcut = Buffer.concat([Buffer.from('\0shortcuts\0\x000\0\x02appid\0'), Buffer.from([0x78, 0x56, 0x34, 0x92]),
+    Buffer.from('\x01AppName\0Example Recomp\0\x01Exe\0"C:/Games/Example.exe"\0\x08\x08\x08')]);
+  assert.equal(readSteamShortcuts(shortcut)[0].appname, 'Example Recomp');
+  assert.deepEqual(readSteamShortcuts(shortcut.subarray(0, 22)), []);
+  await mkdir(folder, { recursive: true });
+  await mkdir(path.join(root, 'config'));
+  await writeFile(path.join(root, 'config', 'loginusers.vdf'), `"users" { "${account}" { "MostRecent" "1" } }`);
+  await writeFile(path.join(folder, 'shortcuts.vdf'), shortcut);
+  const id = String((0x92345678n << 32n) | 0x02000000n);
+  assert.deepEqual(await steamShortcuts([root]), [{ id: 'shortcut-' + id, steamShortcut: id,
+    name: 'Example Recomp', source: 'Steam · Não Steam' }]);
+});
 
 test('detecta o início e falhas do runner em jogos da Amazon', async () => {
   const moduleFile = require.resolve('../src/linux-stores');
@@ -90,6 +109,19 @@ test('usa o umu preparado pelo PeraGames para abrir o jogo com o Proton selecion
   const runner = await windowsRunner(undefined, root, root, root);
   assert.equal(path.basename(runner.file), 'umu-run');
   assert.deepEqual(runner.environment, { PROTONPATH: 'GE-Proton', WINEPREFIX: root });
+});
+
+test('separa prefixos de Wine e Proton sem perder os prefixos anteriores compatíveis', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'peragames-prefix-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const legacy = path.join(root, 'epic-example');
+  await mkdir(legacy);
+  await writeFile(path.join(legacy, 'system.reg'), 'wine');
+  assert.equal(await storeGamePrefix(legacy, 'wine-system'), legacy);
+  assert.equal(await storeGamePrefix(legacy, 'GE-Proton'), path.join(root, 'proton', 'epic-example'));
+  await mkdir(path.join(legacy, 'pfx'));
+  assert.equal(await storeGamePrefix(legacy, 'GE-Proton'), legacy);
+  assert.equal(await storeGamePrefix(legacy, 'wine-system'), path.join(root, 'wine', 'epic-example'));
 });
 
 test('encontra a pasta real do jogo GOG e monitora a abertura pelo gogdl', async t => {

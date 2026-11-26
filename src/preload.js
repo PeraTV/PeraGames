@@ -62,6 +62,8 @@ contextBridge.exposeInMainWorld('pera', {
   runGameInstaller: options => invoke('game-setup:install', options),
   saveGameSetup: options => invoke('game-setup:save', options),
   play: id => invoke('game:play', id),
+  markRecomp: id => invoke('game:recomp', id),
+  uninstallGame: id => invoke('game:uninstall', id),
   onSteamLaunchRequested: callback => ipcRenderer.on('game:steam-launch-requested', (_, name) => callback(name)),
   onStoreLaunchStatus: callback => ipcRenderer.on('game:store-status', (_, status) => callback(status)),
   pasteAmazonLogin: () => invoke('linux-store:paste-amazon'),

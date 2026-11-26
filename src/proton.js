@@ -7,6 +7,7 @@ const { steamLibraryRoots, systemToolsRoot } = require('./steam-proton');
 const { ensureUmu } = require('./umu');
 
 const automaticProton = 'GE-Proton';
+const wineSelection = runner => runner === 'wine-system' || Boolean(runner?.startsWith('wine:'));
 const isWindowsGame = game => Boolean(game && !game.emulator && !game.appId &&
   (['epic', 'gog', 'amazon'].includes(game.store) || /\.exe$/i.test(game.file || '')));
 
@@ -65,6 +66,13 @@ function protonEnvironment(proton, prefix) {
   return { PROTONPATH: proton || automaticProton, WINEPREFIX: prefix };
 }
 
+async function storeGamePrefix(previous, selection) {
+  const wine = wineSelection(selection);
+  const protonLayout = await fs.lstat(path.join(previous, 'pfx')).then(() => true, () => false);
+  if (wine ? !protonLayout && await fileExists(path.join(previous, 'system.reg')) : protonLayout) return previous;
+  return path.join(path.dirname(previous), wine ? 'wine' : 'proton', path.basename(previous));
+}
+
 async function findWineVersions(home) {
   const roots = [
     path.join(home, '.local', 'share', 'lutris', 'runners', 'wine'),
@@ -84,19 +92,23 @@ async function findWineVersions(home) {
 
 async function windowsRunner(selection, prefix, home, umuRoot) {
   const runner = selection || automaticProton;
-  if (runner === 'wine-system' || runner.startsWith('wine:')) {
+  if (wineSelection(runner)) {
     const file = runner === 'wine-system' ? await findLinuxCommand('wine', process.env) : runner.slice(5);
     if (!file || (runner !== 'wine-system' && !(await findWineVersions(home)).some(version => version.path === runner))) {
       throw new Error('A versão selecionada do Wine não foi encontrada.');
     }
     return { file, environment: { WINEPREFIX: prefix } };
   }
-  if (runner !== automaticProton && !await isProtonDirectory(runner)) {
-    throw new Error('A versão selecionada do Proton não foi encontrada.');
+  if (runner !== automaticProton) {
+    if (!await isProtonDirectory(runner)) throw new Error('A versão selecionada do Proton não foi encontrada.');
+    const manifest = path.join(runner, 'toolmanifest.vdf');
+    if (!await fileExists(manifest) && !await runHostTool('test', ['-f', manifest], { timeout: 3500 }).then(() => true, () => false)) {
+      throw new Error('Este Proton não contém o manifesto de runtime. Escolha outra versão ou reinstale esta.');
+    }
   }
   const file = await ensureUmu(umuRoot);
   return { file, environment: protonEnvironment(runner, prefix) };
 }
 
-module.exports = { automaticProton, isWindowsGame, isProtonDirectory, findProtonVersions, findWineVersions,
+module.exports = { automaticProton, wineSelection, storeGamePrefix, isWindowsGame, isProtonDirectory, findProtonVersions, findWineVersions,
   latestGEProton, protonEnvironment, windowsRunner };

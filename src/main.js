@@ -7,9 +7,9 @@ const os = require('node:os');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { stores, romFormats, romArguments } = require('./catalog');
-const { getSteamRoots, steamGames, steamDownloads, detectStores, fileExists, launch, isMacBundle, macApps, findLinuxCommand,
+const { getSteamRoots, steamGames, steamShortcuts, gpuModels, steamDownloads, detectStores, fileExists, launch, isMacBundle, macApps, findLinuxCommand,
   openWebLink, flathubId, installFlatpak, openLinuxSoftware, runHostTool } = require('./system');
-const { isWindowsGame, isProtonDirectory, findProtonVersions, findWineVersions, latestGEProton, windowsRunner } = require('./proton');
+const { wineSelection, storeGamePrefix, isWindowsGame, isProtonDirectory, findProtonVersions, findWineVersions, latestGEProton, windowsRunner } = require('./proton');
 const linuxStores = require('./linux-stores');
 const { releaseAsset, setupStoreTool } = require('./store-tools');
 const steamProton = require('./steam-proton');
@@ -42,7 +42,7 @@ const storeDownload = ({ id, windowsUrl, linuxUrl, website }) =>
 const runnable = async file => await fileExists(file) || (platform === 'darwin' && await isMacBundle(file));
 const defaultPreferences = { locale: 'system', zoom: 100, motion: false, titles: false, color: false, installDirectory: '' };
 const emptyData = () => ({
-  games: [], roms: [], apps: {}, favorites: [], played: {}, featured: null, customStores: [],
+  games: [], roms: [], apps: {}, favorites: [], played: {}, recomp: {}, featured: null, customStores: [],
   gameCovers: {}, gameBackdrops: {}, gameDetails: {}, steamPrograms: [],
   gridCovers: {},
   preferences: { ...defaultPreferences },
@@ -66,6 +66,7 @@ let steamWatch;
 let pendingSteamProgress;
 let detected = {};
 let installedGames = [];
+let importedSteamShortcuts = [];
 let installedPrograms = [];
 const steamItems = new Map();
 const romAssets = new Map();
@@ -135,7 +136,7 @@ function getStore(id) {
 const storeLauncher = id => data.games.find(game => game.launcher === id);
 
 function getGame(id) {
-  const game = [...data.games, ...installedGames, ...data.roms].find(item => item.id === id);
+  const game = [...data.games, ...installedGames, ...importedSteamShortcuts, ...data.roms].find(item => item.id === id);
   if (!game) throw new Error('Jogo não encontrado. Atualize a biblioteca.');
   return game;
 }
@@ -165,9 +166,10 @@ function scan() {
     pendingScan = (async () => {
       const roots = await getSteamRoots(platform, process.env, os.homedir());
       if (data.apps.steam) roots.unshift(path.dirname(data.apps.steam));
-      const [apps, steam] = await Promise.all([
+      const [apps, steam, shortcuts] = await Promise.all([
         detectStores(catalog(), platform, process.env, data, roots),
         steamGames(roots),
+        steamShortcuts(roots, data.steamProfile),
         refreshRomArtwork()
       ]);
       await readExecutableIcons(apps);
@@ -184,6 +186,7 @@ function scan() {
       installedPrograms = visible.filter(game => software.has(game.appId));
       installedGames = visible.filter(game => !software.has(game.appId) &&
         [0, 1, 2, 12].includes(steamItems.get(game.appId)?.app_type ?? 0));
+      importedSteamShortcuts = shortcuts;
       detected = apps;
     })().finally(() => { pendingScan = undefined; });
   }
@@ -191,15 +194,17 @@ function scan() {
 }
 
 function state() {
-  const gameState = ({ id, appId, name, source, emulator, store, storeId, file }) => {
+  const gameState = ({ id, appId, name, source, emulator, store, storeId, file, steamShortcut }) => {
     const online = data.gameDetails[id];
     const steam = steamAssets(steamItems.get(appId));
     const rom = romAssets.get(id);
     return {
       id, appId, name: rom?.name || name, source, emulator, system: rom?.system, discId: rom?.id,
-      origin: appId ? 'steam' : store || (/\.exe$/i.test(file || '') || data.gameProton[id]?.executable ? 'exe' : 'local'),
-      canUseProton: platform === 'linux' && !emulator,
-      canEditSetup: platform === 'linux' && !appId && !emulator && !store,
+      origin: data.recomp[id] ? 'recomp' : appId ? 'steam' : steamShortcut ? 'steam-shortcut' : store || (/\.exe$/i.test(file || '') || data.gameProton[id]?.executable ? 'exe' : 'local'),
+      recomp: Boolean(data.recomp[id]), canMarkRecomp: !emulator,
+      canUninstall: Boolean(appId || store), steamShortcut,
+      canUseProton: platform === 'linux' && !emulator && !steamShortcut,
+      canEditSetup: platform === 'linux' && !appId && !emulator && !store && !steamShortcut,
       artwork: [...(rom?.art || []), rom && online?.cover, ...featuredSteamArt(appId), steam.cover, online?.coverFallback].filter(Boolean),
       screens: rom?.screens,
       gridCover: data.gridCovers[id]?.url,
@@ -218,7 +223,7 @@ function state() {
     platform,
     gridConfigured: Boolean(gridKey),
     gridKeySaved: Boolean(gridKey && data.gridKey),
-    games: [...data.games.filter(game => !game.launcher), ...installedGames].map(gameState),
+    games: [...data.games.filter(game => !game.launcher), ...installedGames, ...importedSteamShortcuts].map(gameState),
     ownedStoreGames,
     preferences: data.preferences,
     roms: data.roms.map(gameState),
@@ -339,19 +344,23 @@ handle('app:install-directory', async (reset, window) => {
   } else await updateData(copy => { copy.preferences.installDirectory = ''; });
   return state();
 });
-function systemReport() {
+async function systemReport() {
+  const cards = (await gpuModels(platform)).filter(name => typeof name === 'string').map(name => name.trim()).filter(Boolean);
+  const gpu = cards.length ? cards : await app.getGPUInfo('basic').then(info => (info.gpuDevice || [])
+    .map(device => device.deviceString).filter(Boolean), () => []);
   return {
     system: os.type() + ' ' + os.release() + ' · ' + process.arch,
     processor: os.cpus()[0]?.model || '',
+    gpu: [...new Set(gpu)].join(' / '),
     memory: (os.totalmem() / (1024 ** 3)).toFixed(1) + ' GiB',
     version
   };
 }
 handle('app:diagnostics', systemReport);
-handle('app:copy-diagnostics', () => {
-  const report = systemReport();
+handle('app:copy-diagnostics', async () => {
+  const report = await systemReport();
   clipboard.writeText([
-    'PeraGames ' + report.version, report.system, 'CPU: ' + report.processor, 'RAM: ' + report.memory
+    'PeraGames ' + report.version, report.system, 'CPU: ' + report.processor, 'GPU: ' + (report.gpu || translate('Não identificada')), 'RAM: ' + report.memory
   ].join('\n'));
 });
 handle('downloads:list', () => downloads.list());
@@ -746,6 +755,7 @@ async function protonSettings(id) {
   }
   return {
     ...await localRunners(), canChooseExecutable: !isWindowsGame(game),
+    separateRunners: Boolean(game.store),
     steamDownloads: detected.steam ? steamProton.valveProton : [],
     ...data.gameProton[id]
   };
@@ -998,10 +1008,10 @@ async function playGame(id, window) {
   const game = getGame(id);
   const compatibility = data.gameProton[id] || {};
   const storeStatus = reason => {
-    if (!window.isDestroyed()) window.webContents.send('game:store-status', { name: game.name, provider: game.store, reason });
+    if (!window.isDestroyed()) window.webContents.send('game:store-status', { id, name: game.name, provider: game.store, reason });
   };
   if (game.store) {
-    storeStatus(platform === 'linux' && !compatibility.proton?.startsWith('wine') ? 'preparing-proton' : 'preparing');
+    storeStatus(platform === 'linux' && !wineSelection(compatibility.proton) ? 'preparing-proton' : 'preparing');
   }
   if (game.emulator === 'android') {
     if (platform !== 'win32' || path.extname(game.file).toLowerCase() !== '.lnk') throw new Error('Este jogo precisa de um atalho do Windows.');
@@ -1025,19 +1035,20 @@ async function playGame(id, window) {
     const system = romAssets.get(id)?.system;
     await launch(target.file, [...target.args, ...romArguments(game, { system, passthrough: data.dolphinPassthrough })],
       { visible: game.emulator === 'dolphin' });
-  } else if (game.appId) {
+  } else if (game.appId || game.steamShortcut) {
     const steam = detected.steam;
     if (!steam) throw new Error('A Steam não foi detectada. Vincule o executável em Lojas.');
-    if (recentSteamLaunches.has(game.appId)) return;
-    recentSteamLaunches.add(game.appId);
+    const steamId = game.appId || game.steamShortcut;
+    if (recentSteamLaunches.has(steamId)) return;
+    recentSteamLaunches.add(steamId);
     if (!window.isDestroyed()) window.webContents.send('game:steam-launch-requested', game.name);
-    const url = 'steam://rungameid/' + game.appId;
+    const url = 'steam://rungameid/' + steamId;
     try {
       if (platform === 'darwin') await shell.openExternal(url);
       else await launch(steam.file, [...steam.args, url]);
-      setTimeout(() => recentSteamLaunches.delete(game.appId), 5000).unref();
+      setTimeout(() => recentSteamLaunches.delete(steamId), 5000).unref();
     } catch {
-      recentSteamLaunches.delete(game.appId);
+      recentSteamLaunches.delete(steamId);
       throw new Error('Não foi possível pedir à Steam para abrir o jogo.');
     }
   } else if (game.store && platform !== 'linux') {
@@ -1048,7 +1059,8 @@ async function playGame(id, window) {
     const executable = compatibility.executable || game.file;
     if (!game.store && !await fileExists(executable)) throw new Error('O executável foi movido ou removido.');
     const { proton, prefix } = compatibility;
-    const winePrefix = prefix || defaultWinePrefix(id);
+    const defaultPrefix = defaultWinePrefix(id);
+    const winePrefix = prefix || (game.store ? await storeGamePrefix(defaultPrefix, proton) : defaultPrefix);
     if (prefix && !await fs.stat(prefix).then(stats => stats.isDirectory(), () => false)) {
       throw new Error('O prefixo Wine selecionado não foi encontrado.');
     }
@@ -1071,12 +1083,60 @@ async function playGame(id, window) {
     await launch(command.file, command.args, { cwd, hostCwd: cwd });
   } else {
     if (!await runnable(game.file)) throw new Error('O executável foi movido ou removido.');
-    await launch(game.file);
+    if (platform === 'win32' && data.recomp[id]) {
+      const started = Date.now();
+      await launch(game.file, [], { visible: true, onClose(code, signal) {
+        if (code || signal || Date.now() - started < 5000) storeStatus(code === 3221225781 || code === -1073741515
+          ? 'windows-dll' : 'recomp-exit');
+      } });
+    } else await launch(game.file);
   }
   if (!game.launcher) await updateData(copy => { copy.played[id] = Date.now(); });
   return state();
 }
 handle('game:play', playGame);
+handle('game:recomp', async id => {
+  if (getGame(id).emulator) throw new Error('Este jogo pertence à biblioteca de emuladores.');
+  await updateData(copy => { if (copy.recomp[id]) delete copy.recomp[id]; else copy.recomp[id] = true; });
+  return state();
+});
+handle('game:uninstall', async (id, window) => {
+  const game = getGame(id);
+  if (!game.appId && !game.store) throw new Error('Desinstalação indisponível para este jogo.');
+  const { response } = await dialog.showMessageBox(window, { type: 'warning',
+    message: translate('Desinstalar {name}?', { name: game.name }),
+    detail: translate('Os arquivos da instalação serão removidos do computador.'),
+    buttons: [translate('Cancelar'), translate('Desinstalar')], defaultId: 0, cancelId: 0 });
+  if (response !== 1) return;
+  if (game.appId) {
+    const url = 'steam://uninstall/' + game.appId;
+    const steam = detected.steam;
+    if (platform === 'linux' && steam) await launch(steam.file, [...steam.args, url]);
+    else await shell.openExternal(url);
+    const roots = await getSteamRoots(platform, process.env, os.homedir());
+    if (data.apps.steam) roots.unshift(path.dirname(data.apps.steam));
+    let remaining = 20;
+    const check = async () => {
+      if ((await steamGames(roots)).some(entry => entry.appId === game.appId)) {
+        if (--remaining > 0) setTimeout(() => { void check().catch(() => {}); }, 4000).unref();
+        return;
+      }
+      await scan();
+      broadcast('downloads:library', state());
+    };
+    setTimeout(() => { void check().catch(() => {}); }, 4000).unref();
+    return;
+  }
+  await withStore(game.store, async config => {
+    await linuxStores.uninstall(game, config, shell);
+    await updateData(copy => {
+      copy.games = copy.games.filter(entry => entry.id !== id);
+      copy.ownedStoreGames[game.store] = (copy.ownedStoreGames[game.store] || []).map(entry =>
+        entry.id === game.storeId ? { ...entry, installed: false } : entry);
+    });
+  });
+  return state();
+});
 handle('game:favorite', async id => {
   getGame(id);
   await updateData(copy => {
@@ -1087,7 +1147,8 @@ handle('game:favorite', async id => {
   return state();
 });
 handle('game:remove', async id => {
-  if (getGame(id).appId) throw new Error('Jogos da Steam são sincronizados automaticamente.');
+  const game = getGame(id);
+  if (game.appId || game.steamShortcut) throw new Error('Jogos da Steam são sincronizados automaticamente.');
   await updateData(copy => {
     copy.games = copy.games.filter(game => game.id !== id);
     copy.roms = copy.roms.filter(game => game.id !== id);
@@ -1097,6 +1158,7 @@ handle('game:remove', async id => {
     delete copy.gameBackdrops[id];
     delete copy.gameDetails[id];
     delete copy.gridCovers[id];
+    delete copy.recomp[id];
     if (copy.featured?.gameId === id) copy.featured.gameId = '';
   });
   romAssets.delete(id);
@@ -1224,6 +1286,7 @@ handle('game:compatibility', ({ id, provider }) => {
 handle('game:compatibility-link', id => openWebLink(protonDBPage(id), shell));
 handle('rom:add', async ({ emulator, folder }, window) => {
   if (!Object.hasOwn(romFormats, emulator)) throw new Error('Escolha um emulador para importar os jogos.');
+  if (emulator === 'xenia' && platform !== 'win32') throw new Error('O Xenia está disponível no Windows.');
   const extensions = romFormats[emulator];
   const android = emulator === 'android';
   if (android && platform !== 'win32') throw new Error('Atalhos de jogos Android estão disponíveis no Windows.');
@@ -1239,9 +1302,11 @@ handle('rom:add', async ({ emulator, folder }, window) => {
     const root = candidates[0];
     const entries = await fs.readdir(root, { withFileTypes: true });
     candidates = entries.filter(entry => entry.isFile()).map(entry => path.join(root, entry.name));
+    if (emulator === 'rpcs3') candidates.push(path.join(root, 'PS3_GAME', 'USRDIR', 'EBOOT.BIN'));
   }
   const files = [];
   for (const file of candidates) {
+    if (['rpcs3', 'shadps4'].includes(emulator) && /\.bin$/i.test(file) && !/^eboot\.bin$/i.test(path.basename(file))) continue;
     if (extensions.includes(path.extname(file).slice(1).toLowerCase()) && await fileExists(file)) files.push(file);
   }
   if (!files.length) throw new Error('Nenhum jogo compatível foi encontrado na seleção.');
@@ -1266,7 +1331,11 @@ handle('rom:add', async ({ emulator, folder }, window) => {
         if (core) existing.core = core;
         continue;
       }
-      const name = cleanTitle(path.parse(file).name) || path.parse(file).name;
+      const parent = path.dirname(file);
+      const title = /^eboot\.bin$/i.test(path.basename(file)) ? path.basename(emulator === 'rpcs3' &&
+        path.basename(parent).toUpperCase() === 'USRDIR' && path.basename(path.dirname(parent)).toUpperCase() === 'PS3_GAME'
+        ? path.dirname(path.dirname(parent)) : parent) : path.parse(file).name;
+      const name = cleanTitle(title) || title;
       copy.roms.push({ id: randomUUID(), file, core, emulator, name, source: android ? 'Android' : 'ROM' });
     }
   });

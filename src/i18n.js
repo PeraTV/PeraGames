@@ -393,6 +393,22 @@ Origem dos jogos|Game source
 Todas as origens|All sources
 Arquivos EXE|EXE files
 Jogos locais|Local games
+Atalhos não Steam|Non-Steam shortcuts
+Jogos Recomp|Recomp games
+Steam · Não Steam|Steam · Non-Steam
+Marcar como Recomp|Mark as Recomp
+Desmarcar Recomp|Unmark Recomp
+Desinstalar|Uninstall
+Desinstalar {name}?|Uninstall {name}?
+Os arquivos da instalação serão removidos do computador.|The installation files will be removed from the computer.
+Desinstalação indisponível para este jogo.|Uninstall is not available for this game.
+A pasta gerenciada da GOG não foi identificada.|The managed GOG installation folder could not be identified.
+O sistema não conseguiu mover a pasta do jogo para a lixeira.|The system could not move the game folder to the trash.
+Placa de vídeo|Graphics card
+Não identificada|Not identified
+O Xenia está disponível no Windows.|Xenia is available on Windows.
+O Windows não encontrou uma DLL necessária para {name}. Confira as dependências indicadas pelo projeto Recomp.|Windows could not find a DLL required by {name}. Check the requirements listed by the Recomp project.
+O executável de {name} encerrou. Confira o arquivo escolhido e os arquivos exigidos pelo projeto Recomp.|The executable for {name} exited. Check the selected executable and the files required by the Recomp project.
 {count} jogo|{count} game
 {count} jogos|{count} games
 {count} de {total} jogos|{count} of {total} games
@@ -484,6 +500,10 @@ A Epic pediu uma atualização para {name}. Abra a lista da Epic no PeraGames e 
 O login da Epic falhou ao abrir {name}. Conecte a conta novamente em Lojas.|Epic sign-in failed when opening {name}. Reconnect your account in Stores.
 O Legendary não encontrou os arquivos de {name}. Confira a instalação na lista da Epic.|Legendary could not find the files for {name}. Check the installation in the Epic library.
 O ambiente do Proton falhou ao iniciar {name}.|The Proton runtime failed to start {name}.
+O Wine ou Proton não conseguiu usar a pasta de dados de {name}. Confira o prefixo nas opções do jogo.|Wine or Proton could not use the data folder for {name}. Check the prefix in the game settings.
+O ambiente gráfico falhou ao iniciar {name}.|The graphics environment failed to start {name}.
+Este Proton não contém o manifesto de runtime. Escolha outra versão ou reinstale esta.|This Proton build is missing its runtime manifest. Choose another version or reinstall this one.
+Wine e Proton usam pastas separadas para os dados deste jogo.|Wine and Proton use separate data folders for this game.
 O Wine ou Proton encerrou {name} com erro.|Wine or Proton closed {name} with an error.
 O Legendary não conseguiu abrir {name}.|Legendary could not start {name}.
 Configurar com Wine ou Proton|Set up with Wine or Proton

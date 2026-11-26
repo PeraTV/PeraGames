@@ -153,6 +153,29 @@ const stores = [
     description: 'Emulador de PlayStation Portable.', website: 'https://www.ppsspp.org/', systems: 'PSP',
     windowsUrl: 'https://www.ppsspp.org/download/', linuxUrl: 'https://flathub.org/apps/org.ppsspp.PPSSPP',
     windowsPaths: ['PPSSPP/PPSSPPWindows64.exe'], linuxCommands: ['ppsspp', 'PPSSPPSDL'], flatpaks: ['org.ppsspp.PPSSPP']
+  },
+  {
+    id: 'rpcs3', name: 'RPCS3', category: 'Emuladores', systems: 'PlayStation 3', icon: 'controller',
+    description: 'Emulador de PlayStation 3.', website: 'https://rpcs3.net/download',
+    windowsUrl: 'https://rpcs3.net/download', linuxUrl: 'https://rpcs3.net/download',
+    windowsPaths: ['RPCS3/rpcs3.exe'], linuxCommands: ['rpcs3']
+  },
+  {
+    id: 'shadps4', name: 'shadPS4', category: 'Emuladores', systems: 'PlayStation 4', icon: 'controller',
+    description: 'Emulador de PlayStation 4. Vincule o executável do emulador para abrir arquivos de jogos.',
+    website: 'https://shadps4.net/downloads/', windowsUrl: 'https://shadps4.net/downloads/', linuxUrl: 'https://shadps4.net/downloads/',
+    windowsPaths: ['shadPS4/shadPS4.exe'], linuxCommands: ['shadPS4', 'shadps4']
+  },
+  {
+    id: 'xemu', name: 'xemu', category: 'Emuladores', systems: 'Xbox', icon: 'controller',
+    description: 'Emulador do Xbox original.', website: 'https://xemu.app/docs/download/',
+    windowsUrl: 'https://xemu.app/docs/download/', linuxUrl: 'https://xemu.app/docs/download/',
+    windowsPaths: ['xemu/xemu.exe'], linuxCommands: ['xemu'], flatpaks: ['app.xemu.xemu']
+  },
+  {
+    id: 'xenia', name: 'Xenia', category: 'Emuladores', systems: 'Xbox 360', icon: 'controller',
+    description: 'Emulador de Xbox 360 para Windows.', website: 'https://xenia.jp/download/',
+    windowsUrl: 'https://xenia.jp/download/', windowsPaths: ['Xenia/xenia.exe', 'Xenia/xenia_canary.exe']
   }
 ];
 
@@ -161,6 +184,7 @@ const romFormats = {
   dolphin: ['iso', 'gcm', 'rvz', 'wia', 'wbfs', 'ciso', 'gcz', 'wad', 'm3u'],
   pcsx2: ['iso', 'bin', 'cue', 'chd', 'cso', 'zso', 'gz', 'm3u'],
   ppsspp: ['iso', 'cso', 'chd', 'pbp', 'elf', 'prx'],
+  rpcs3: ['bin', 'elf', 'self'], shadps4: ['bin', 'elf'], xemu: ['iso'], xenia: ['iso', 'xex'],
   retroarch: ['nes', 'sfc', 'smc', 'gb', 'gbc', 'gba', 'n64', 'z64', 'v64', 'nds', 'md', 'gen',
     'sms', 'gg', 'pce', 'a26', 'ngp', 'ws', 'cue', 'chd', 'iso', 'bin', 'm3u', 'zip', '7z']
 };
@@ -174,6 +198,7 @@ function romArguments(game, { system, passthrough } = {}) {
   const args = {
     pcsx2: ['-batch', '--', game.file],
     ppsspp: [game.file],
+    rpcs3: [game.file], shadps4: [game.file], xemu: ['-dvd_path', game.file], xenia: [game.file],
     retroarch: ['-L', game.core, game.file]
   };
   return args[game.emulator];
