@@ -68,4 +68,49 @@ function createDownloads(publish) {
   };
 }
 
-module.exports = { createDownloads, readProgress };
+function createSteamDownloadTracker() {
+  const tracked = new Map();
+  const requested = new Map();
+  const finished = new Map();
+  let installed = new Set();
+  let active = [];
+  const list = () => [...active, ...requested.values(), ...finished.values()];
+  return {
+    list,
+    watching: () => tracked.size > 0,
+    isInstalled: id => installed.has(id),
+    request(id, name) {
+      if (!installed.has(id) && !tracked.has(id)) {
+        tracked.set(id, Date.now());
+        requested.set(id, { id, name, source: 'Steam', status: 'steam-requested' });
+      }
+    },
+    remove(id) {
+      if (requested.delete(id)) tracked.delete(id);
+      finished.delete(id);
+    },
+    update(snapshot, now = Date.now()) {
+      installed = new Set(snapshot.filter(job => job.status === 'done').map(job => job.id));
+      active = snapshot.filter(job => job.status !== 'done');
+      for (const job of active) {
+        tracked.set(job.id, now);
+        requested.delete(job.id);
+        finished.delete(job.id);
+      }
+      const completed = snapshot.filter(job => job.status === 'done' && tracked.delete(job.id));
+      for (const job of completed) {
+        requested.delete(job.id);
+        if (finished.size >= 100) finished.delete(finished.keys().next().value);
+        finished.set(job.id, job);
+      }
+      for (const [id, lastSeen] of tracked) {
+        if (now - lastSeen <= 5 * 60 * 1000) continue;
+        tracked.delete(id);
+        requested.delete(id);
+      }
+      return completed;
+    }
+  };
+}
+
+module.exports = { createDownloads, createSteamDownloadTracker, readProgress };

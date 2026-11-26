@@ -146,11 +146,19 @@ function steamGames(roots) {
 function steamDownloads(roots) {
   return steamManifests(roots, ({ appId, name, text }) => {
     const flags = Number(readVdfString(text, 'StateFlags'));
+    if (!Number.isSafeInteger(flags) || flags < 1) return null;
+    const job = { id: 'steam-' + appId, name, source: 'Steam' };
+    const installed = 4;
+    const appRunning = 8192;
+    if ((flags & ~appRunning) === installed) return { ...job, status: 'done', progress: 100 };
+
     const total = Number(readVdfString(text, 'BytesToDownload'));
     const downloaded = Number(readVdfString(text, 'BytesDownloaded'));
-    if (!Number.isFinite(flags) || flags === 4 || !Number.isSafeInteger(total) || !Number.isSafeInteger(downloaded) ||
-        downloaded < 0 || downloaded >= total) return null;
-    return { id: 'steam-' + appId, name, source: 'Steam', status: 'external', progress: 100 * downloaded / total };
+    const validBytes = Number.isSafeInteger(total) && total > 0 && Number.isSafeInteger(downloaded) && downloaded >= 0;
+    const staging = (flags & (2097152 | 4194304)) !== 0;
+    if (!validBytes && !staging) return null;
+    const status = staging || downloaded >= total ? 'steam-finalizing' : 'external';
+    return { ...job, status, progress: validBytes ? Math.min(99, 100 * downloaded / total) : undefined };
   });
 }
 

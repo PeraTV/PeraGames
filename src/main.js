@@ -18,7 +18,7 @@ const { findUmu, ensureUmu } = require('./umu');
 const { steamAccountGames } = require('./steam-account');
 const { browseSteam, steamAssets, lookupGame, cleanTitle, titleKey, featuredSteamArt } = require('./game-info');
 const { getCompatibility, protonDBPage } = require('./game-compatibility');
-const { createDownloads } = require('./downloads');
+const { createDownloads, createSteamDownloadTracker } = require('./downloads');
 const { findGridCover, preferencesUrl, verifyGridKey } = require('./steamgriddb');
 const { romArtwork } = require('./rom-art');
 const { loginFlag, setTvLogin } = require('./tv-startup');
@@ -60,6 +60,10 @@ function broadcast(channel, value) {
   for (const window of windows.values()) if (!window.isDestroyed()) window.webContents.send(channel, value);
 }
 const downloads = createDownloads(jobs => broadcast('downloads:changed', jobs));
+const steamDownloadTracker = createSteamDownloadTracker();
+const recentSteamLaunches = new Set();
+let steamWatch;
+let pendingSteamProgress;
 let detected = {};
 let installedGames = [];
 let installedPrograms = [];
@@ -351,7 +355,13 @@ handle('app:copy-diagnostics', () => {
   ].join('\n'));
 });
 handle('downloads:list', () => downloads.list());
-handle('downloads:remove', id => downloads.remove(id));
+handle('downloads:remove', id => {
+  if (typeof id === 'string' && /^steam-\d+$/.test(id)) {
+    steamDownloadTracker.remove(id);
+    return steamDownloadTracker.list();
+  }
+  downloads.remove(id);
+});
 handle('downloads:retry', id => downloads.retry(id));
 handle('downloads:steam', () => shell.openExternal('steam://open/downloads'));
 handle('downloads:steam-install', async value => {
@@ -359,19 +369,52 @@ handle('downloads:steam-install', async value => {
   const id = /^\d{1,10}$/.test(input) ? input :
     /^https:\/\/store\.steampowered\.com\/app\/(\d{1,10})(?:[/?#]|$)/i.exec(input)?.[1];
   if (!id) throw new Error('Cole um link de jogo da loja Steam ou um AppID válido.');
+  await refreshSteamProgress();
+  const jobId = 'steam-' + id;
+  if (steamDownloadTracker.isInstalled(jobId)) {
+    await scan();
+    broadcast('downloads:library', state());
+    return;
+  }
   if (platform === 'linux') {
     if (!detected.steam) await scan();
     const steam = detected.steam;
     if (!steam) throw new Error('A Steam não foi detectada. Vincule o executável em Lojas.');
-    return launch(steam.file, [...steam.args, 'steam://install/' + id]);
-  }
-  return shell.openExternal('steam://install/' + id);
+    await launch(steam.file, [...steam.args, 'steam://install/' + id]);
+  } else await shell.openExternal('steam://install/' + id);
+  const name = data.ownedStoreGames.steam?.find(game => game.id === id)?.name || `Steam AppID ${id}`;
+  steamDownloadTracker.request(jobId, name);
+  watchSteamProgress();
 });
-handle('downloads:steam-progress', async () => {
-  const roots = await getSteamRoots(platform, process.env, os.homedir());
-  if (data.apps.steam) roots.unshift(path.dirname(data.apps.steam));
-  return steamDownloads(roots);
-});
+
+function watchSteamProgress() {
+  if (steamWatch || !steamDownloadTracker.watching()) return;
+  steamWatch = setInterval(() => { void refreshSteamProgress().catch(() => {}); }, 4000);
+  steamWatch.unref();
+}
+
+function refreshSteamProgress() {
+  if (pendingSteamProgress) return pendingSteamProgress;
+  pendingSteamProgress = (async () => {
+    const roots = await getSteamRoots(platform, process.env, os.homedir());
+    if (data.apps.steam) roots.unshift(path.dirname(data.apps.steam));
+    const completed = steamDownloadTracker.update(await steamDownloads(roots));
+    const jobs = steamDownloadTracker.list();
+    if (steamDownloadTracker.watching()) watchSteamProgress();
+    else {
+      clearInterval(steamWatch);
+      steamWatch = undefined;
+    }
+    if (completed.length) {
+      broadcast('downloads:steam-completed', { completed, jobs });
+      void Promise.resolve(pendingScan).catch(() => {}).then(scan)
+        .then(() => broadcast('downloads:library', state())).catch(() => {});
+    }
+    return jobs;
+  })().finally(() => { pendingSteamProgress = undefined; });
+  return pendingSteamProgress;
+}
+handle('downloads:steam-progress', refreshSteamProgress);
 handle('steam-account:info', () => ({ profile: data.steamProfile, ready: Boolean(steamKey),
   saved: Boolean(steamKey && data.steamKey), count: data.ownedStoreGames.steam?.length }));
 handle('steam-account:help', () => openWebLink('https://steamcommunity.com/dev/apikey', shell));
@@ -979,8 +1022,18 @@ async function playGame(id, window) {
   } else if (game.appId) {
     const steam = detected.steam;
     if (!steam) throw new Error('A Steam não foi detectada. Vincule o executável em Lojas.');
-    if (platform === 'darwin') await shell.openExternal('steam://rungameid/' + game.appId);
-    else await launch(steam.file, [...steam.args, '-applaunch', game.appId]);
+    if (recentSteamLaunches.has(game.appId)) return;
+    recentSteamLaunches.add(game.appId);
+    if (!window.isDestroyed()) window.webContents.send('game:steam-launch-requested', game.name);
+    const url = 'steam://rungameid/' + game.appId;
+    try {
+      if (platform === 'darwin') await shell.openExternal(url);
+      else await launch(steam.file, [...steam.args, url]);
+      setTimeout(() => recentSteamLaunches.delete(game.appId), 5000).unref();
+    } catch {
+      recentSteamLaunches.delete(game.appId);
+      throw new Error('Não foi possível pedir à Steam para abrir o jogo.');
+    }
   } else if (game.store && platform !== 'linux') {
     const config = await linuxStore(game.store);
     if (!config.ready || !config.installable) throw new Error('A loja não pode abrir este jogo neste sistema.');

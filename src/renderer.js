@@ -279,6 +279,7 @@ function gameCard(game) {
 }
 
 const canInstallStoreGame = game => state.platform !== 'darwin' || game.provider !== 'amazon';
+const storeInstallLabel = game => game.provider === 'steam' ? 'Instalar pela Steam' : 'Instalar jogo';
 const libraryOrigins = { steam: 'Steam', epic: 'Epic Games', gog: 'GOG', amazon: 'Amazon Games',
   exe: 'Arquivos EXE', local: 'Jogos locais' };
 
@@ -297,12 +298,12 @@ function storeLibraryCard(game) {
   }
   const info = el('div', 'game-info');
   info.append(el('h3', '', game.name), el('p', '', source + ' · ' + t('Não instalado')));
-  const install = button(t('Instalar jogo'), async node => {
-    node.textContent = t('Instalando…');
+  const install = button(t(storeInstallLabel(game)), async node => {
+    node.textContent = t(game.provider === 'steam' ? 'Abrindo a Steam.' : 'Instalando…');
     await perform(node, async () => {
       await queueStoreGame(game.provider, game.id);
     });
-    if (node.isConnected) node.textContent = t('Instalar jogo');
+    if (node.isConnected) node.textContent = t(storeInstallLabel(game));
   }, 'button primary');
   if (canInstallStoreGame(game)) info.append(install);
   card.append(art, info);
@@ -450,7 +451,7 @@ function renderGameDetails() {
   byId('game-setup-edit').hidden = !game.canEditSetup;
   byId('game-favorite').hidden = Boolean(previewStoreGame);
   byId('game-customize').hidden = Boolean(previewStoreGame);
-  byId('game-play').textContent = t(previewStoreGame ? 'Instalar jogo' : '▶ Jogar');
+  byId('game-play').textContent = t(previewStoreGame ? storeInstallLabel(previewStoreGame) : '▶ Jogar');
   byId('game-play').hidden = Boolean(previewStoreGame && !canInstallStoreGame(previewStoreGame));
   renderCompatibility(game);
 }
@@ -1223,7 +1224,7 @@ function selectTheaterGame(game) {
   for (const id of ['theater-play', 'theater-details']) byId(id).hidden = !game;
   const canPlay = Boolean(game && (!game.provider || canInstallStoreGame(game)));
   byId('theater-play').hidden = !canPlay;
-  byId('theater-play').textContent = t(game?.provider ? 'Instalar jogo' : '▶ Jogar');
+  byId('theater-play').textContent = t(game?.provider ? storeInstallLabel(game) : '▶ Jogar');
   const favorite = byId('theater-favorite');
   favorite.hidden = !game || Boolean(game.provider);
   favorite.setAttribute('aria-pressed', String(Boolean(game?.favorite)));
@@ -1629,14 +1630,16 @@ const storeNames = { epic: 'Epic Games', gog: 'GOG', amazon: 'Amazon Games' };
 function renderDownloadJobs() {
   const panel = byId('download-jobs');
   const focused = document.activeElement?.dataset.downloadAction;
-  const labels = { queued: 'Na fila', running: 'Instalando…', done: 'Concluído', failed: 'Falhou', external: 'Gerenciado pela Steam' };
+  const labels = { queued: 'Na fila', running: 'Instalando…', done: 'Concluído', failed: 'Falhou', external: 'Baixando pela Steam',
+    'steam-requested': 'Aguardando confirmação na Steam', 'steam-finalizing': 'Instalando pela Steam' };
   panel.replaceChildren(...[...downloadJobs, ...steamJobs].map(job => {
     const row = el('article', 'settings-card download-row');
-    const store = state.stores.find(item => item.id === job.source);
+    const store = state.stores.find(item => item.id === job.source.toLowerCase());
     if (store) row.append(storeIcon(store));
     const content = el('div', 'download-info');
     content.append(el('strong', '', job.name), el('p', '', (storeNames[job.source] || job.source) + ' · ' + t(labels[job.status])));
-    if (job.status === 'running' || job.status === 'done' || job.status === 'external') {
+    const active = ['running', 'external', 'steam-finalizing'].includes(job.status);
+    if (active || job.status === 'done') {
       const bar = el('progress');
       bar.max = 100;
       bar.setAttribute('aria-label', t('Progresso da instalação'));
@@ -1648,11 +1651,17 @@ function renderDownloadJobs() {
     }
     if (job.error) content.append(el('p', '', t(job.error)));
     row.append(content);
-    if (job.status !== 'running' && job.status !== 'external') {
+    if (!active) {
       const actions = el('div', 'actions');
       const actionsByStatus = job.status === 'failed' ? [['retry', 'Tentar novamente', api.retryDownload]] : [];
       for (const [act, label, method] of [...actionsByStatus, ['remove', job.status === 'queued' ? 'Remover da fila' : 'Dispensar', api.removeDownload]]) {
-        const control = button(t(label), node => perform(node, () => method(job.id)), 'plain');
+        const control = button(t(label), node => perform(node, async () => {
+          const result = await method(job.id);
+          if (job.source === 'Steam' && Array.isArray(result)) {
+            steamJobs = result;
+            renderDownloadJobs();
+          }
+        }), 'plain');
         control.dataset.downloadAction = job.id + ':' + act;
         actions.append(control);
       }
@@ -1837,9 +1846,23 @@ api.onDownloads(jobs => {
 });
 api.onDownloadLibrary(library => {
   state = library;
+  if (previewStoreGame?.provider === 'steam') {
+    const id = 'steam-' + previewStoreGame.id;
+    if (state.games.some(game => game.id === id)) {
+      selectedGame = id;
+      previewStoreGame = undefined;
+    }
+  }
   render();
   if (byId('game-editor').open) renderGameDetails();
 });
+api.onSteamDownloadsComplete(({ completed, jobs }) => {
+  steamJobs = jobs;
+  if (settingsTab === 'downloads' && byId('preferences-dialog').open) renderDownloadJobs();
+  notify(completed.length === 1 ? t('{name} foi instalado pela Steam.', { name: completed[0].name }) :
+    t('{count} jogos foram instalados pela Steam.', { count: completed.length }));
+});
+api.onSteamLaunchRequested(name => notify(t('Pedindo à Steam para abrir {name}.', { name })));
 api.onEpicLaunchStatus(({ name, reason }) => {
   const messages = {
     preparing: 'Preparando {name}.',

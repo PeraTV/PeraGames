@@ -5,7 +5,7 @@ const test = require('node:test');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const { createDownloads, readProgress } = require('../src/downloads');
+const { createDownloads, createSteamDownloadTracker, readProgress } = require('../src/downloads');
 const { launch, steamDownloads } = require('../src/system');
 
 test('extrai o progresso sem marcar como concluído antes de o instalador sair', () => {
@@ -55,6 +55,32 @@ test('mostra andamento da Steam a partir dos bytes reais do manifesto', async co
   await fs.writeFile(path.join(folder, 'appmanifest_321.acf'),
     '"appid" "321" "name" "Completed" "StateFlags" "4" "BytesToDownload" "700" "BytesDownloaded" "700"');
   assert.deepEqual(await steamDownloads([root]), [
-    { id: 'steam-123', name: 'Game', source: 'Steam', status: 'external', progress: 25 }
+    { id: 'steam-123', name: 'Game', source: 'Steam', status: 'external', progress: 25 },
+    { id: 'steam-321', name: 'Completed', source: 'Steam', status: 'done', progress: 100 }
   ]);
+  await fs.writeFile(path.join(folder, 'appmanifest_123.acf'),
+    '"appid" "123" "name" "Game" "StateFlags" "2097152" "BytesToDownload" "1026" "BytesDownloaded" "1026"');
+  assert.deepEqual((await steamDownloads([root])).find(game => game.id === 'steam-123'),
+    { id: 'steam-123', name: 'Game', source: 'Steam', status: 'steam-finalizing', progress: 99 });
+});
+
+test('confirma a instalação apenas dos downloads Steam acompanhados e mantém o resultado na lista', () => {
+  const tracker = createSteamDownloadTracker();
+  const old = { id: 'steam-321', name: 'Already installed', source: 'Steam', status: 'done', progress: 100 };
+  const newGame = { id: 'steam-123', name: 'New game', source: 'Steam' };
+  assert.deepEqual(tracker.update([old]), []);
+  tracker.request(old.id, old.name);
+  assert.deepEqual(tracker.list(), []);
+  tracker.request(newGame.id, newGame.name);
+  assert.equal(tracker.list()[0].status, 'steam-requested');
+  const finalizing = { ...newGame, status: 'steam-finalizing', progress: 99 };
+  assert.deepEqual(tracker.update([old, finalizing]), []);
+  assert.deepEqual(tracker.list(), [finalizing]);
+  assert.deepEqual(tracker.update([old]), []);
+  const complete = { ...newGame, status: 'done', progress: 100 };
+  assert.deepEqual(tracker.update([old, complete]), [complete]);
+  assert.deepEqual(tracker.update([old, complete]), []);
+  assert.deepEqual(tracker.list(), [complete]);
+  tracker.remove(complete.id);
+  assert.deepEqual(tracker.list(), []);
 });

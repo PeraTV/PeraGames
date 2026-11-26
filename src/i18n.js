@@ -522,7 +522,16 @@ Instalar um jogo da Steam|Install a Steam game
 Link do jogo na loja ou AppID|Game store link or AppID
 Abrir instalação na Steam ↗|Open installer in Steam ↗
 Cole um link de jogo da loja Steam ou um AppID válido.|Paste a Steam store game link or a valid AppID.
-Gerenciado pela Steam|Managed by Steam
+Confirme a instalação no cliente Steam e acompanhe o progresso aqui.|Confirm the installation in the Steam client and follow its progress here.
+Instalar pela Steam|Install through Steam
+Abrindo a Steam.|Opening Steam.
+Aguardando confirmação na Steam|Waiting for confirmation in Steam
+Baixando pela Steam|Downloading through Steam
+Instalando pela Steam|Installing through Steam
+{name} foi instalado pela Steam.|{name} was installed through Steam.
+{count} jogos foram instalados pela Steam.|{count} games were installed through Steam.
+Pedindo à Steam para abrir {name}.|Asking Steam to open {name}.
+Não foi possível pedir à Steam para abrir o jogo.|Could not ask Steam to open the game.
 Idioma|Language
 Idioma do sistema|System language
 Zoom da interface|Interface zoom
