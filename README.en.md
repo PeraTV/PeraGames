@@ -18,6 +18,26 @@ Choose the installer for your system on the releases page. After installation, u
 
 The interface follows your system language. PeraGames opens in Portuguese on Portuguese systems and in English on other systems.
 
+### Linux installation from the terminal
+
+The same bundle works on BigGnome, Manjaro, and other distributions with Flatpak. KDE Plasma and GNOME are desktop environments. Use the command for the distribution that runs your desktop.
+
+| Distribution | If the `flatpak` command is missing |
+| --- | --- |
+| BigGnome or Manjaro | `sudo pacman -S flatpak` |
+| KDE neon, Kubuntu, Ubuntu, or Debian | `sudo apt update && sudo apt install flatpak` |
+| Fedora, including Fedora KDE Plasma | `sudo dnf install flatpak` |
+
+Download the `.flatpak` bundle from the [latest release](https://github.com/PeraTV/PeraGames/releases/latest) and run:
+
+```sh
+flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+flatpak install --user ~/Downloads/PeraGames-Linux-x64.flatpak
+flatpak run io.github.PeraTV.PeraGames
+```
+
+Use the x64 bundle if `uname -m` prints `x86_64`. If it prints `aarch64`, use `PeraGames-Linux-arm64.flatpak` instead. Adjust `~/Downloads` if you saved the file elsewhere. A software manager with Flatpak support can also open the downloaded file. [Distribution-specific setup instructions](https://flathub.org/en/setup).
+
 ## Library and customization
 
 | | |
