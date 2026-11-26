@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { lookupGame, steamAssets, titleKey } = require('../src/game-info');
+const { getCompatibility, protonDBPage } = require('../src/game-compatibility');
 const { romArguments } = require('../src/catalog');
 
 const response = data => ({ ok: true, json: async () => data });
@@ -58,4 +59,39 @@ test('entrega caminho da ROM e núcleo como argumentos individuais', () => {
   assert.deepEqual(romArguments({ emulator: 'dolphin', file }, { system: 'wii', passthrough: true }), ['-e', file]);
   assert.deepEqual(romArguments({ emulator: 'pcsx2', file }), ['-batch', '--', file]);
   assert.deepEqual(romArguments({ emulator: 'retroarch', core: 'C:/core.dll', file }), ['-L', 'C:/core.dll', file]);
+});
+
+test('consulta a edição Steam para um executável independente e mantém o resultado em cache', async context => {
+  const requests = context.mock.method(globalThis, 'fetch', async input => {
+    const url = new URL(input);
+    if (url.pathname.includes('storesearch')) {
+      return response({ items: url.searchParams.get('term') === 'Human Fall Flat' ?
+        [{ id: 477160, name: 'Human Fall Flat' }, { id: 1, name: 'Human Fall Flat 2' }] : [] });
+    }
+    if (url.hostname === 'www.protondb.com') {
+      assert.match(url.pathname, /\/477160\.json$/);
+      return response({ tier: 'gold', total: 31 });
+    }
+    return response({ 477160: { data: { platforms: { linux: false } } } });
+  });
+  const report = await getCompatibility({ name: 'HumanFallFlat.exe' }, 'pt-BR');
+  assert.deepEqual(report, { appId: '477160', status: 'rated', tier: 'gold', total: 31 });
+  assert.equal(await getCompatibility({ appId: '477160', name: 'Human Fall Flat' }), report);
+  assert.equal(requests.mock.callCount(), 4);
+  assert.equal(protonDBPage(report.appId), 'https://www.protondb.com/app/477160');
+});
+
+test('mostra Linux nativo quando a Steam confirma e evita atribuir a nota de títulos ambíguos', async context => {
+  context.mock.method(globalThis, 'fetch', async input => {
+    const url = new URL(input);
+    if (url.pathname.includes('storesearch')) return response({
+      items: [{ id: 701, name: 'Game' }, { id: 702, name: 'Game' }]
+    });
+    assert.equal(url.hostname, 'www.protondb.com');
+    return { status: 404, ok: false };
+  });
+  assert.deepEqual(await getCompatibility({ name: 'Game' }), { status: 'unmatched' });
+  const native = await getCompatibility({ name: 'Game', info: { url: 'https://store.steampowered.com/app/701/', steamLinux: true } });
+  assert.equal(native.tier, 'native');
+  assert.equal(protonDBPage(undefined), 'https://www.protondb.com/explore');
 });

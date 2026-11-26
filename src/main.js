@@ -14,6 +14,7 @@ const linuxStores = require('./linux-stores');
 const steamProton = require('./steam-proton');
 const protonCatalog = require('./proton-catalog');
 const { browseSteam, steamAssets, lookupGame, cleanTitle, featuredSteamArt } = require('./game-info');
+const { getCompatibility, protonDBPage } = require('./game-compatibility');
 const { romArtwork } = require('./rom-art');
 const { loginFlag, setTvLogin } = require('./tv-startup');
 const { version, updateRepository } = require('../package.json');
@@ -940,6 +941,13 @@ handle('game:info-source', async id => {
     await shell.openExternal(url);
   }
 });
+handle('game:compatibility', ({ id, provider }) => {
+  const game = provider ? (Object.hasOwn(data.ownedStoreGames, provider) &&
+    data.ownedStoreGames[provider]?.find(entry => entry.id === id)) : getGame(id);
+  if (!game || game.emulator || game.launcher) throw new Error('Jogo não encontrado. Atualize a biblioteca.');
+  return getCompatibility({ ...game, info: provider ? undefined : data.gameDetails[id] }, languageFor(systemLocale()));
+});
+handle('game:compatibility-link', id => openWebLink(protonDBPage(id), shell));
 handle('rom:add', async ({ emulator, folder }, window) => {
   if (!Object.hasOwn(romFormats, emulator)) throw new Error('Escolha um emulador para importar os jogos.');
   const extensions = romFormats[emulator];

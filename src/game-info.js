@@ -64,6 +64,16 @@ function titleKey(name) {
     .toLocaleLowerCase('pt-BR').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 }
 
+async function findSteamGameId(name, language, requireUnique = false) {
+  const locale = lookupLocale(language);
+  const query = new URLSearchParams({ term: name, l: locale.steam, cc: locale.country });
+  const found = await json(STEAM + '/api/storesearch/?' + query);
+  const key = titleKey(name);
+  const ids = new Set(found?.items?.filter(item => typeof item.name === 'string' &&
+    titleKey(item.name) === key && /^\d{1,10}$/.test(String(item.id))).map(item => String(item.id)));
+  return requireUnique && ids.size > 1 ? undefined : ids.values().next().value;
+}
+
 function plainText(text = '') {
   const entities = { nbsp: ' ', amp: '&', quot: '"', apos: "'", lt: '<', gt: '>', '#39': "'" };
   return String(text ?? '').replace(/<[^>]*>/g, '').replace(/&(#39|nbsp|amp|quot|apos|lt|gt);/g, (_, key) => entities[key]).trim();
@@ -92,10 +102,7 @@ async function lookupGame(game, cachedItem, language) {
   let id = game.appId;
   let serviceError;
   if (!id) {
-    const query = new URLSearchParams({ term: name, l: locale.steam, cc: locale.country });
-    const found = await json(STEAM + '/api/storesearch/?' + query).catch(error => { serviceError = error; });
-    const match = found?.items?.find(item => titleKey(item.name) === titleKey(name) && /^\d+$/.test(String(item.id)));
-    if (match) id = String(match.id);
+    id = await findSteamGameId(name, language).catch(error => { serviceError = error; });
   }
   if (id) {
     const query = new URLSearchParams({ appids: id, l: locale.steam, cc: locale.country });
@@ -115,7 +122,8 @@ async function lookupGame(game, cachedItem, language) {
         cover: assets.cover || '',
         coverFallback: steamImage(steam.header_image),
         hero: assets.hero || steamImage(steam.screenshots?.[0]?.path_full) || steamImage(steam.background_raw),
-        source: 'Steam', url: STEAM + '/app/' + id + '/'
+        source: 'Steam', url: STEAM + '/app/' + id + '/',
+        steamLinux: typeof steam.platforms?.linux === 'boolean' ? steam.platforms.linux : undefined
       };
     }
     if (!steam && item && [0, 1, 2].includes(item.app_type ?? 0) && (assets.cover || item.basic_info?.short_description)) {
@@ -131,4 +139,4 @@ async function lookupGame(game, cachedItem, language) {
   return null;
 }
 
-module.exports = { browseSteam, steamAssets, lookupGame, cleanTitle, titleKey, featuredSteamArt };
+module.exports = { browseSteam, steamAssets, lookupGame, findSteamGameId, cleanTitle, titleKey, featuredSteamArt };

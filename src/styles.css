@@ -355,6 +355,14 @@ body[data-palette]:not([data-palette="amber"]) :focus-visible { outline-color: v
 .modal-poster img { width: 100%; height: 100%; object-fit: cover; }
 .game-card[data-system] .game-art img { object-fit: contain; object-position: center; }
 #game-poster { object-fit: scale-down; object-position: center; }
+#game-poster[data-fill] { object-fit: cover; }
+#game-compatibility[data-tier="native"] { border-color: #8bc8a6; color: #b0edc7; }
+#game-compatibility[data-tier="platinum"] { border-color: #b9c9ef; color: #e4edff; }
+#game-compatibility[data-tier="gold"] { border-color: #e0ad57; color: #ffcf80; }
+#game-compatibility[data-tier="silver"] { border-color: #a5a6b6; color: #dedfea; }
+#game-compatibility[data-tier="bronze"] { border-color: #cd8b68; color: #f8bc98; }
+#game-compatibility[data-tier="borked"] { border-color: #d67b83; color: #ffb7bf; }
+#game-compatibility-note { color: var(--muted); }
 #game-proton .actions { margin-top: 8px; flex-wrap: wrap; }
 #proton-downloads { margin-top: 8px; }
 #proton-download { margin-top: 6px; }

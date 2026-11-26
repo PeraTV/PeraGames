@@ -64,6 +64,8 @@ contextBridge.exposeInMainWorld('pera', {
   resetBackdrop: id => invoke('game:reset-backdrop', id),
   saveGameInfo: info => invoke('game:save-info', info),
   gameInfoSource: id => invoke('game:info-source', id),
+  gameCompatibility: request => invoke('game:compatibility', request),
+  gameCompatibilityLink: id => invoke('game:compatibility-link', id),
   featureStore: () => invoke('feature:store'),
   pickFeatureArt: () => invoke('feature:pick-art'),
   saveFeature: settings => invoke('feature:save', settings)

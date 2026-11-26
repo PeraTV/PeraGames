@@ -413,7 +413,21 @@ Editar Wine ou Proton|Edit Wine or Proton
 Baixar instalador do Windows ↗|Download Windows installer ↗
 Salvar em Lojas|Save to Stores
 Versões para baixar pela Steam|Versions available in Steam
-Baixar pela Steam|Download via Steam`.split('\n').map(line => line.split('|')));
+Baixar pela Steam|Download via Steam
+Nativo|Native
+Platina|Platinum
+Ouro|Gold
+Prata|Silver
+Bronze|Bronze
+Não roda|Borked
+Consultando compatibilidade no Linux…|Checking Linux compatibility…
+Referência da edição Steam. O executável desta loja pode se comportar de outro jeito.|Based on the Steam edition. This store's executable may behave differently.
+A Steam lista uma versão nativa para Linux.|Steam lists a native Linux version.
+Classificação da comunidade ProtonDB.|ProtonDB community rating.
+Relatos: {count}.|Reports: {count}.
+O ProtonDB não tem uma correspondência confirmada para este título.|No confirmed ProtonDB match for this title.
+Ainda não há uma classificação no ProtonDB.|No ProtonDB rating yet.
+A consulta de compatibilidade está indisponível no momento.|The compatibility service is temporarily unavailable.`.split('\n').map(line => line.split('|')));
 
   function languageFor(locale) {
     return /^pt(?:[-_]|$)/i.test(locale || 'pt-BR') ? 'pt-BR' : 'en';

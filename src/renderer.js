@@ -275,7 +275,9 @@ function gameCard(game) {
 
 function storeLibraryCard(game) {
   const card = el('article', 'game-card unavailable-game');
-  const art = el('div', 'game-art');
+  const source = { epic: 'Epic Games', gog: 'GOG', amazon: 'Amazon Games' }[game.provider];
+  const art = button('', () => showGameDetails({ ...game, source }), 'game-art');
+  art.setAttribute('aria-label', t('Detalhes de {name}', { name: game.name }));
   art.append(el('span', 'game-placeholder', game.name));
   if (game.cover) {
     const image = el('img');
@@ -285,7 +287,6 @@ function storeLibraryCard(game) {
     art.append(image);
   }
   const info = el('div', 'game-info');
-  const source = { epic: 'Epic Games', gog: 'GOG', amazon: 'Amazon Games' }[game.provider];
   info.append(el('h3', '', game.name), el('p', '', source + ' · ' + t('Não instalado')));
   const install = button(t('Instalar jogo'), async node => {
     node.textContent = t('Instalando…');
@@ -337,8 +338,51 @@ function storeIcon(item) {
   return image;
 }
 
+let previewStoreGame;
+let compatibilityView;
+const compatibilityTiers = {
+  native: 'Nativo', platinum: 'Platina', gold: 'Ouro', silver: 'Prata', bronze: 'Bronze', borked: 'Não roda'
+};
+
+function renderCompatibility(game) {
+  const indicator = byId('game-compatibility');
+  const note = byId('game-compatibility-note');
+  indicator.hidden = note.hidden = Boolean(game.emulator);
+  delete indicator.dataset.tier;
+  if (game.emulator) return;
+  const result = compatibilityView?.result;
+  const tier = result?.tier;
+  if (tier) indicator.dataset.tier = tier;
+  indicator.textContent = tier ? t(compatibilityTiers[tier]) + ' · ProtonDB ↗' :
+    t('ProtonDB ↗');
+  if (!result) note.textContent = t('Consultando compatibilidade no Linux…');
+  else if (tier) {
+    const edition = game.appId ? '' : t('Referência da edição Steam. O executável desta loja pode se comportar de outro jeito.');
+    const source = tier === 'native' ? t('A Steam lista uma versão nativa para Linux.') :
+      t('Classificação da comunidade ProtonDB.');
+    const reports = tier !== 'native' && result.total > 0 ?
+      t('Relatos: {count}.', { count: result.total }) : '';
+    note.textContent = [source, reports, edition].filter(Boolean).join(' ');
+  } else {
+    note.textContent = t({
+      unmatched: 'O ProtonDB não tem uma correspondência confirmada para este título.',
+      unrated: 'Ainda não há uma classificação no ProtonDB.',
+      unavailable: 'A consulta de compatibilidade está indisponível no momento.'
+    }[result.status]);
+  }
+}
+
+async function loadGameCompatibility(game, view) {
+  try {
+    view.result = await api.gameCompatibility({ id: game.id, provider: game.provider });
+  } catch {
+    view.result = { status: 'unavailable' };
+  }
+  if (compatibilityView === view && byId('game-editor').open) renderGameDetails();
+}
+
 function renderGameDetails() {
-  const game = [...state.games, ...(state.roms || [])].find(item => item.id === selectedGame);
+  const game = previewStoreGame || [...state.games, ...(state.roms || [])].find(item => item.id === selectedGame);
   if (!game) return;
   const info = game.info || {};
   byId('game-title').textContent = game.name;
@@ -354,7 +398,9 @@ function renderGameDetails() {
     row.append(el('dt', '', t(label)), el('dd', '', value));
     return row;
   }));
-  setArt(byId('game-poster'), gameArtwork(game));
+  const poster = byId('game-poster');
+  poster.toggleAttribute('data-fill', !game.emulator);
+  setArt(poster, gameArtwork(game), 0, undefined, !game.emulator && !game.customCover);
   setArt(byId('game-backdrop'), gameBanners(game), 900);
   byId('game-reset-cover').hidden = !game.customCover;
   byId('game-reset-backdrop').hidden = !game.customBackdrop;
@@ -366,6 +412,10 @@ function renderGameDetails() {
   byId('game-proton').hidden = !game.canUseProton;
   byId('game-proton-open').hidden = !game.canUseProton;
   byId('game-setup-edit').hidden = !game.canEditSetup;
+  byId('game-favorite').hidden = Boolean(previewStoreGame);
+  byId('game-customize').hidden = Boolean(previewStoreGame);
+  byId('game-play').textContent = t(previewStoreGame ? 'Instalar jogo' : '▶ Jogar');
+  renderCompatibility(game);
 }
 
 function showProtonSettings(settings) {
@@ -523,7 +573,10 @@ async function installCatalogProton(item) {
 }
 
 function showGameDetails(game) {
-  selectedGame = game.id;
+  previewStoreGame = game.provider ? game : undefined;
+  selectedGame = previewStoreGame ? undefined : game.id;
+  const view = {};
+  compatibilityView = view;
   byId('game-feedback').hidden = true;
   byId('game-query').value = game.name;
   byId('game-description').value = game.info?.customDescription || '';
@@ -542,7 +595,8 @@ function showGameDetails(game) {
   byId('proton-release').textContent = '';
   renderGameDetails();
   byId('game-editor').showModal();
-  if (!game.info?.customDescription && (!game.info?.description ||
+  if (!game.emulator) loadGameCompatibility(game, view);
+  if (!previewStoreGame && !game.info?.customDescription && (!game.info?.description ||
       (game.info.language || 'pt-BR') !== document.documentElement.lang)) byId('game-lookup').click();
 }
 
@@ -1716,10 +1770,19 @@ byId('proton-executable').addEventListener('click', () => changeProton(id => api
 byId('proton-executable-reset').addEventListener('click', () => changeProton(id => api.protonExecutable({ id, reset: true })));
 byId('game-lookup').addEventListener('click', async event => {
   const node = event.currentTarget;
+  const id = selectedGame;
   const label = node.textContent;
   node.textContent = t('Consultando…');
   byId('game-feedback').hidden = true;
-  await perform(node, () => api.lookupGame({ id: selectedGame, query: byId('game-query').value }));
+  const updated = await perform(node, () => api.lookupGame({ id, query: byId('game-query').value }));
+  const game = updated && id === selectedGame && state.games.find(item => item.id === id);
+  const appId = /\/app\/(\d+)\/$/.exec(game?.info?.url || '')?.[1];
+  if (appId && !game.appId && appId !== compatibilityView?.result?.appId) {
+    const view = {};
+    compatibilityView = view;
+    renderGameDetails();
+    loadGameCompatibility(game, view);
+  }
   node.textContent = label;
 });
 byId('game-cover').addEventListener('click', event => perform(event.currentTarget, () => api.pickCover(selectedGame)));
@@ -1728,7 +1791,18 @@ byId('game-choose-backdrop').addEventListener('click', event => perform(event.cu
 byId('game-reset-backdrop').addEventListener('click', event => perform(event.currentTarget, () => api.resetBackdrop(selectedGame)));
 byId('cover-search').addEventListener('click', event => perform(event.currentTarget, () =>
   api.searchCover({ id: selectedGame, query: byId('game-query').value })));
-byId('game-play').addEventListener('click', event => perform(event.currentTarget, () => api.play(selectedGame)));
+byId('game-play').addEventListener('click', event => {
+  const game = previewStoreGame;
+  return perform(event.currentTarget, async () => {
+    if (!game) return api.play(selectedGame);
+    const games = await api.installLinuxStoreGame({ provider: game.provider, id: game.id });
+    if (!games) return;
+    if (games.some(item => item.id === game.id && item.installed) && previewStoreGame === game) byId('game-editor').close();
+    return api.refresh();
+  });
+});
+byId('game-compatibility').addEventListener('click', event =>
+  perform(event.currentTarget, () => api.gameCompatibilityLink(compatibilityView?.result?.appId)));
 byId('game-favorite').addEventListener('click', event => perform(event.currentTarget, () => api.favorite(selectedGame)));
 byId('game-info-source').addEventListener('click', event => perform(event.currentTarget, () => api.gameInfoSource(selectedGame)));
 byId('game-save-info').addEventListener('click', event => perform(event.currentTarget, () =>
