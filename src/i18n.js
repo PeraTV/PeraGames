@@ -281,8 +281,11 @@ Usar prefixo Wine existente|Use an existing Wine prefix
 Voltar ao prefixo padrão|Use the default prefix
 GE-Proton mais recente (automático)|Latest GE-Proton (automatic)
 O modo automático baixa e atualiza o GE-Proton ao iniciar o jogo.|Automatic mode downloads and updates GE-Proton when launching the game.
-Instale o umu-launcher no Linux para iniciar jogos com Proton.|Install umu-launcher on Linux to launch games with Proton.
-Instale o umu-launcher para iniciar este jogo com Proton.|Install umu-launcher to launch this game with Proton.
+O PeraGames prepara o umu-launcher na primeira vez que você usar o Proton.|PeraGames sets up umu-launcher the first time you use Proton.
+O umu-launcher precisa de Python 3.10 ou mais recente no Linux.|umu-launcher requires Python 3.10 or newer on Linux.
+Não foi possível baixar o umu-launcher. Tente novamente.|Could not download umu-launcher. Try again.
+A verificação do arquivo do umu-launcher falhou.|umu-launcher file verification failed.
+Não foi possível preparar o umu-launcher no Linux.|Could not set up umu-launcher on Linux.
 GE-Proton disponível: {version}|Available GE-Proton release: {version}
 Prefixo Wine: {folder}|Wine prefix: {folder}
 Prefixo separado para este jogo|Separate prefix for this game
@@ -366,6 +369,46 @@ Escolha uma loja para conectar ou sincronizar sua biblioteca.|Choose a store to 
 Não instalados|Not installed
 Instalando…|Installing…
 Sincronizar|Sync
+Conta Steam|Steam account
+Importe a biblioteca com seu perfil e uma chave da API da Steam. A Steam precisa permitir ver seus detalhes de jogos.|Import your library with your profile and a Steam Web API key. Your Steam game details must be visible to the API.
+Link do perfil ou SteamID64|Profile link or SteamID64
+Chave da API da Steam|Steam Web API key
+Obter chave na Steam|Get a key from Steam
+Desconectar conta|Disconnect account
+Confira a chave da API da Steam.|Check your Steam Web API key.
+Informe o link do seu perfil Steam ou o SteamID64.|Enter your Steam profile link or SteamID64.
+Não foi possível consultar a Steam. Tente novamente.|Could not reach Steam. Try again.
+Perfil Steam não encontrado.|Steam profile not found.
+A Steam não mostrou os jogos. Confira a visibilidade dos detalhes de jogos no perfil.|Steam did not return any games. Check the game details visibility in your Steam profile.
+Informe a chave novamente após reiniciar o PeraGames para sincronizar.|Enter your key again after restarting PeraGames to sync.
+Origem dos jogos|Game source
+Todas as origens|All sources
+Arquivos EXE|EXE files
+Jogos locais|Local games
+{count} jogo|{count} game
+{count} jogos|{count} games
+{count} de {total} jogos|{count} of {total} games
+Buscar jogos|Search games
+Nome do jogo|Game title
+Digite parte do nome|Type part of the title
+Teclado na tela|On-screen keyboard
+Mostrar jogos não instalados|Show uninstalled games
+Resultados da busca|Search results
+Espaço|Space
+Limpar|Clear
+Apagar|Backspace
+Página anterior|Previous page
+Próxima página|Next page
+Página {page} de {total}|Page {page} of {total}
+Abrir página do componente|Open component page
+Reinstalar componente|Reinstall component
+Trocar componente da loja|Replace store component
+Baixando e verificando o componente da loja.|Downloading and verifying the store component.
+Componente pronto. Abra o login no navegador para conectar sua conta.|Component ready. Open the sign-in page in your browser to connect your account.
+O componente da loja não está disponível para este sistema.|The store component is unavailable on this system.
+Não foi possível baixar ou verificar o componente da loja. Tente novamente.|Could not download or verify the store component. Try again.
+O arquivo não pôde ser executado como componente desta loja. Confira o sistema e a arquitetura.|The file could not run as a store component. Check the operating system and architecture.
+Depois de entrar na Epic, o navegador pode exibir uma página com um código em texto. Isso faz parte do login. Copie todo o conteúdo da página, incluindo as chaves { }, e cole abaixo para importar seus jogos.|After signing in to Epic, the browser may display a page with a code in plain text. This is part of signing in. Copy the entire page, including the braces { }, and paste it below to import your games.
 Conectar|Connect
 Buscar na loja do Linux|Search the Linux software center
 Loja do Linux|Linux software center

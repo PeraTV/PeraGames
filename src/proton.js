@@ -4,6 +4,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { fileExists, findLinuxCommand, runHostTool } = require('./system');
 const { steamLibraryRoots, systemToolsRoot } = require('./steam-proton');
+const { ensureUmu } = require('./umu');
 
 const automaticProton = 'GE-Proton';
 const isWindowsGame = game => Boolean(game && !game.emulator && !game.appId &&
@@ -81,7 +82,7 @@ async function findWineVersions(home) {
   return versions;
 }
 
-async function windowsRunner(selection, prefix, home) {
+async function windowsRunner(selection, prefix, home, umuRoot) {
   const runner = selection || automaticProton;
   if (runner === 'wine-system' || runner.startsWith('wine:')) {
     const file = runner === 'wine-system' ? await findLinuxCommand('wine', process.env) : runner.slice(5);
@@ -93,8 +94,7 @@ async function windowsRunner(selection, prefix, home) {
   if (runner !== automaticProton && !await isProtonDirectory(runner)) {
     throw new Error('A versão selecionada do Proton não foi encontrada.');
   }
-  const file = await findLinuxCommand('umu-run', process.env);
-  if (!file) throw new Error('Instale o umu-launcher para iniciar este jogo com Proton.');
+  const file = await ensureUmu(umuRoot);
   return { file, environment: protonEnvironment(runner, prefix) };
 }
 

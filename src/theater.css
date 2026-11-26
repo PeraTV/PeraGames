@@ -1,5 +1,38 @@
 .theater-on .titlebar, .theater-on main > section:not(#theater) { display: none !important; }
 .theater-on main { padding: 0; background: #120b0c; }
+
+#tv-search-dialog {
+  width: min(880px, calc(100% - 32px)); max-height: calc(100% - 32px); overflow: auto;
+  padding: clamp(14px, 3vw, 28px); border: 1px solid var(--line); border-radius: 20px;
+  background: radial-gradient(ellipse at top left, color-mix(in srgb, var(--amber) 10%, var(--surface)), var(--bg) 68%);
+  box-shadow: 0 24px 70px #0009;
+}
+#tv-search-input { width: 100%; border-radius: 10px; font-size: clamp(16px, 2vw, 23px); padding: .65em .8em; }
+.tv-search-layout { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: 16px; margin-top: 16px; }
+#tv-search-keyboard { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 5px; align-content: start; }
+.tv-search-key, .tv-search-result {
+  border: 1px solid var(--line); border-radius: 8px;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--surface) 88%, var(--cream)), var(--surface));
+  color: var(--cream); min-width: 0;
+}
+.tv-search-key { min-height: 38px; padding: 5px 2px; font-size: clamp(13px, 1.8vw, 18px); }
+.tv-key-clear, .tv-key-delete { grid-column: span 2; color: var(--muted); }
+.tv-key-space { grid-column: span 6; }
+.tv-search-key:is(:hover, :focus-visible), .tv-search-result:is(:hover, :focus-visible) {
+  border-color: var(--amber); background: color-mix(in srgb, var(--amber) 19%, var(--surface));
+}
+.tv-search-matches { min-width: 0; }
+#tv-search-count { color: var(--muted); margin-bottom: 6px; }
+#tv-search-results { display: grid; gap: 5px; max-height: 238px; overflow: auto; padding: 3px; }
+.tv-search-result { display: grid; gap: 2px; padding: 5px 9px; text-align: left; }
+.tv-search-result strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tv-search-result small { color: var(--muted); }
+.tv-library-pages { align-self: end; display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+.tv-library-pages .button { padding: 2px 8px; }
+#theater[data-layout="gallery"] .tv-library-pages { position: absolute; z-index: 2; top: 0; right: 8vw; pointer-events: auto; }
+.tv-card.tv-uninstalled img { opacity: .73; }
+body:not([data-color-uninstalled]) .tv-card.tv-uninstalled img { filter: grayscale(.8); }
+@media (max-width: 640px) { .tv-search-layout { grid-template-columns: 1fr; } }
 .tv-icon-definitions { position: absolute; width: 0; height: 0; pointer-events: none; }
 .tv-nav-icon {
   display: inline-block; width: 1.2em; height: 1.2em; vertical-align: -.23em;

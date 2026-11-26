@@ -21,6 +21,7 @@
     <symbol id="tv-icon-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18h1.5a1.8 1.8 0 0 0 1.3-3c-.9-.9-.3-2.5 1-2.5H17a4 4 0 0 0 4-4c0-4.7-4.2-8.5-9-8.5Z"/><path d="M7.5 12h.01M9 8h.01M13 7h.01M17 10h.01" stroke-width="2.9"/></symbol>
     <symbol id="tv-icon-appearance" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18m-12 0v11m4-4 2-2 2 2"/></symbol>
     <symbol id="tv-icon-startup" viewBox="0 0 24 24"><path d="M12 3v9m-5-6a8 8 0 1 0 10 0"/></symbol>
+    <symbol id="tv-icon-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></symbol>
   </svg>
   <header class="titlebar">
     <div class="brand"><span class="brand-pear" aria-hidden="true"></span><strong>Pera<span>Games</span></strong></div>
@@ -81,6 +82,9 @@
       <div class="section-head library-tools">
         <h1 id="library-title">Biblioteca de PC</h1>
         <label class="favorite-filter"><input type="checkbox" id="favorites-only"> Favoritos</label>
+        <select id="library-origin-filter" aria-label="Origem dos jogos">
+          <option value="all">Todas as origens</option>
+        </select>
         <select id="library-install-filter" aria-label="Estado da instalação" hidden>
           <option value="all">Todos os jogos</option>
           <option value="installed">Instalados</option>
@@ -90,6 +94,7 @@
         <button class="button" id="refresh-games">Atualizar</button>
         <button class="button primary" id="add-game">+ Adicionar jogo</button>
       </div>
+      <p id="library-game-count" role="status"></p>
       <div id="all-game-cards" class="game-grid"></div>
     </section>
     <section id="emulator-library" aria-labelledby="emulator-library-title" hidden>
@@ -119,6 +124,7 @@
       <header class="theater-top">
         <div class="brand"><span class="brand-pear" aria-hidden="true"></span><strong>Pera<span>Games</span></strong></div>
         <div class="tv-header-actions">
+          <button class="button outline" id="tv-search-open" data-tv-icon="search"><span aria-hidden="true"></span>Buscar jogos</button>
           <button class="button outline" id="tv-palette-open" data-tv-icon="palette"><span aria-hidden="true"></span>Paleta de cores</button>
           <button class="button outline" id="tv-appearance-open" data-tv-icon="appearance"><span aria-hidden="true"></span>Aparência</button>
           <button class="button outline" id="tv-settings-open" data-tv-icon="startup"><span aria-hidden="true"></span>Inicialização</button>
@@ -152,6 +158,11 @@
         </div>
         <section class="tv-shelf" aria-labelledby="tv-shelf-title">
           <h2 id="tv-shelf-title"></h2>
+          <div class="tv-library-pages" id="tv-library-pages" hidden>
+            <button class="button" id="tv-page-prev" type="button" aria-label="Página anterior">‹</button>
+            <span id="tv-page-count" role="status"></span>
+            <button class="button" id="tv-page-next" type="button" aria-label="Próxima página">›</button>
+          </div>
           <div id="theater-deck" class="theater-deck" aria-label="Jogos do Modo TV"></div>
           <button class="gallery-arrow gallery-only" id="gallery-prev" aria-label="Jogo anterior">‹</button>
           <button class="gallery-arrow gallery-only" id="gallery-next" aria-label="Próximo jogo">›</button>
@@ -324,6 +335,7 @@
       <button class="tv-layout-option" data-layout="cockpit"><span class="tv-mini" aria-hidden="true"><i></i><i></i><i></i></span><strong>Painel Âmbar</strong><small>Destaque, lista lateral e atalhos</small></button>
       <button class="tv-layout-option" data-layout="gallery"><span class="tv-mini" aria-hidden="true"><i></i><i></i><i></i></span><strong>Galeria Âmbar</strong><small>Capas em perspectiva e fundo integrado</small></button>
     </div>
+    <label class="tv-check"><input id="tv-show-uninstalled" type="checkbox"> Mostrar jogos não instalados</label>
     <div class="actions dialog-actions"><button class="button" id="tv-open-palette">Paleta de cores</button></div>
     <p id="tv-appearance-feedback" role="status" hidden></p>
   </dialog>
@@ -491,6 +503,38 @@
       </div>
     </div>
   </dialog>
+  <dialog id="tv-search-dialog" aria-labelledby="tv-search-title">
+    <div class="section-head">
+      <h2 id="tv-search-title">Buscar jogos</h2>
+      <button class="button" id="tv-search-close" aria-label="Fechar">×</button>
+    </div>
+    <label for="tv-search-input">Nome do jogo</label>
+    <input id="tv-search-input" type="text" inputmode="search" autocomplete="off" maxlength="100" placeholder="Digite parte do nome">
+    <div class="tv-search-layout">
+      <div id="tv-search-keyboard" aria-label="Teclado na tela"></div>
+      <section class="tv-search-matches" aria-label="Resultados da busca">
+        <p id="tv-search-count" role="status"></p>
+        <div id="tv-search-results"></div>
+      </section>
+    </div>
+  </dialog>
+  <dialog id="steam-account-dialog" aria-labelledby="steam-account-title">
+    <div class="section-head">
+      <h2 id="steam-account-title">Conta Steam</h2>
+      <button class="button" id="steam-account-close" aria-label="Fechar">×</button>
+    </div>
+    <p>Importe a biblioteca com seu perfil e uma chave da API da Steam. A Steam precisa permitir ver seus detalhes de jogos.</p>
+    <form id="steam-account-form">
+      <label>Link do perfil ou SteamID64 <input id="steam-account-profile" type="text" maxlength="180" autocomplete="off" required></label>
+      <label>Chave da API da Steam <input id="steam-account-key" type="password" maxlength="32" autocomplete="off"></label>
+      <div class="actions">
+        <button class="button primary" id="steam-account-sync" type="submit">Sincronizar jogos da conta</button>
+        <button class="button" id="steam-account-help" type="button">Obter chave na Steam</button>
+        <button class="plain" id="steam-account-disconnect" type="button" hidden>Desconectar conta</button>
+      </div>
+    </form>
+    <p id="steam-account-status" role="status"></p>
+  </dialog>
   <dialog id="linux-store-dialog" aria-labelledby="linux-store-title">
     <div class="section-head">
       <h2 id="linux-store-title"></h2>
@@ -507,6 +551,7 @@
       </div>
       <form id="linux-store-connect">
         <p id="linux-store-amazon-help" hidden>Entre no site oficial da Amazon e cole a URL final do navegador abaixo.</p>
+        <p id="linux-store-epic-help" hidden>Depois de entrar na Epic, o navegador pode exibir uma página com um código em texto. Isso faz parte do login. Copie todo o conteúdo da página, incluindo as chaves { }, e cole abaixo para importar seus jogos.</p>
         <label>Código ou URL de retorno do login <input id="linux-store-code" type="password" maxlength="1600" autocomplete="off" required></label>
         <button class="button" type="submit">Vincular conta</button>
       </form>

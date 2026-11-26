@@ -372,6 +372,8 @@ body[data-palette]:not([data-palette="amber"]) :focus-visible { outline-color: v
 #proton-catalog-more { margin-top: 8px; }
 #proton-prefix-text, #proton-executable-text { overflow-wrap: anywhere; }
 #linux-store-dialog { width: min(720px, calc(100% - 32px)); max-height: min(85vh, 800px); overflow: auto; }
+#steam-account-dialog { width: min(580px, calc(100% - 32px)); }
+#library-game-count { color: var(--muted); margin: 0 0 14px; }
 #game-setup-dialog { width: min(780px, calc(100% - 32px)); max-height: calc(100% - 32px); overflow: auto; }
 .setup-grid { display: grid; grid-template-columns: minmax(120px, 25%) minmax(0, 1fr); gap: 20px; }
 .setup-cover { display: grid; align-content: start; gap: 12px; }

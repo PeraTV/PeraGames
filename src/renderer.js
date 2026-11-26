@@ -86,6 +86,8 @@ let theater = false;
 let theaterCategory = 'home';
 let theaterSystem = '';
 let theaterGame;
+let tvLibraryPage = 0;
+const tvPageSize = 40;
 let homeRotation;
 const highlightSources = [['pc', 'Jogos de PC'], ...[...systems, androidSystem].map(([id, name]) => [id, name]), ['all', 'Todos os jogos']];
 const homePrefsKey = 'peragames.highlight';
@@ -277,10 +279,12 @@ function gameCard(game) {
 }
 
 const canInstallStoreGame = game => state.platform !== 'darwin' || game.provider !== 'amazon';
+const libraryOrigins = { steam: 'Steam', epic: 'Epic Games', gog: 'GOG', amazon: 'Amazon Games',
+  exe: 'Arquivos EXE', local: 'Jogos locais' };
 
 function storeLibraryCard(game) {
   const card = el('article', 'game-card unavailable-game');
-  const source = { epic: 'Epic Games', gog: 'GOG', amazon: 'Amazon Games' }[game.provider];
+  const source = t(libraryOrigins[game.provider] || game.provider);
   const art = button('', () => showGameDetails({ ...game, source }), 'game-art');
   art.setAttribute('aria-label', t('Detalhes de {name}', { name: game.name }));
   art.append(el('span', 'game-placeholder', game.name));
@@ -470,7 +474,7 @@ function showProtonSettings(settings) {
     ? t('Feche a Steam antes de salvar. Para instalar uma versão oficial, use Baixar pela Steam.')
     : settings.umu
     ? t('O modo automático baixa e atualiza o GE-Proton ao iniciar o jogo.')
-    : t('Instale o umu-launcher no Linux para iniciar jogos com Proton.');
+    : t('O PeraGames prepara o umu-launcher na primeira vez que você usar o Proton.');
   byId('proton-help').hidden = settings.steam || settings.umu;
   const downloads = settings.steamDownloads || [];
   byId('proton-downloads').hidden = !downloads.length;
@@ -841,11 +845,11 @@ function details(item) {
       if (node.isConnected) node.textContent = label;
     }, 'button primary launch'));
   }
+  if (['steam', 'epic', 'gog', 'amazon'].includes(item.id) || item.amazonInstaller) {
+    const store = item.amazonInstaller ? state.stores.find(store => store.id === 'amazon') : item;
+    body.append(button(t('Conectar conta no PeraGames'), () => openStoreAccount(store), 'button'));
+  }
   if (state.platform === 'linux') {
-    if (['epic', 'gog', 'amazon'].includes(item.id) || item.amazonInstaller) {
-      const store = item.amazonInstaller ? state.stores.find(store => store.id === 'amazon') : item;
-      body.append(button(t('Conectar conta no PeraGames'), () => openLinuxStoreLibrary(store), 'button'));
-    }
     if (item.windowsSetup) {
       body.append(button(t(item.configuredLauncher ? 'Editar Wine ou Proton' : 'Configurar com Wine ou Proton'),
         () => openGameSetup(undefined, item.id), 'button'));
@@ -886,6 +890,7 @@ let storeDialogCommand;
 let storeDialogGames = [];
 let storeDialogBusy = false;
 let storeDialogInstallable = false;
+let storeDialogAutoSetup = false;
 
 function renderLinuxStoreGames() {
   const query = byId('linux-store-search').value;
@@ -913,7 +918,7 @@ async function storeDialogAction(action, statusText = 'Consultando…') {
   status.textContent = t(statusText);
   try {
     const result = await action(storeDialogProvider);
-    status.textContent = '';
+    status.textContent = typeof result === 'string' ? result : '';
     if (Array.isArray(result)) {
       storeDialogGames = result;
       if (!result.length) status.textContent = t('Nenhum jogo encontrado.');
@@ -941,21 +946,26 @@ function openLinuxStoreLibrary(item) {
   byId('linux-store-system').hidden = true;
   byId('linux-store-tool').hidden = true;
   byId('linux-store-amazon-help').hidden = item.id !== 'amazon';
+  byId('linux-store-epic-help').hidden = item.id !== 'epic';
   renderLinuxStoreGames();
   byId('linux-store-dialog').showModal();
   storeDialogAction(loadLinuxStoreLibrary);
 }
 
-async function loadLinuxStoreLibrary(provider) {
-  const { ready, commandName, installable } = await api.linuxStoreInfo(provider);
+async function loadLinuxStoreLibrary(provider, sync = Object.hasOwn(state.ownedStoreGames || {}, provider)) {
+  const { ready, commandName, installable, autoSetup } = await api.linuxStoreInfo(provider);
   storeDialogInstallable = Boolean(installable);
+  storeDialogAutoSetup = Boolean(autoSetup);
   storeDialogCommand = commandName;
   byId('linux-store-account').hidden = !ready;
-  byId('linux-store-setup').hidden = ready;
+  byId('linux-store-setup').hidden = ready && !autoSetup;
+  byId('linux-store-setup').textContent = t(ready ? 'Reinstalar componente' :
+    autoSetup ? 'Instalar componente da loja' : 'Abrir página do componente');
   byId('linux-store-system').hidden = ready || state.platform !== 'linux';
-  byId('linux-store-tool').hidden = ready;
+  byId('linux-store-tool').hidden = false;
+  byId('linux-store-tool').textContent = t(ready ? 'Trocar componente da loja' : 'Vincular componente da loja');
   if (!ready) throw new Error(t('Instale ou vincule o componente {tool} para conectar a conta.', { tool: commandName }));
-  return api.linuxStoreLibrary(provider);
+  return sync ? api.linuxStoreLibrary(provider) : t('Componente pronto. Abra o login no navegador para conectar sua conta.');
 }
 
 function renderCatalog() {
@@ -1045,14 +1055,40 @@ function render() {
     renderHero();
     fillGames('quick-games', games.slice(0, query.trim() ? games.length : 5), Boolean(query.trim()));
   } else {
-    const installFilter = byId('library-install-filter').value;
-    const uninstalled = !onlyFavorites && installFilter !== 'installed'
-      ? Object.entries(state.ownedStoreGames || {}).flatMap(([provider, entries]) =>
-        entries.filter(entry => !entry.installed && matches(entry.name, query)).map(entry => ({ ...entry, provider })))
-      : [];
-    const libraryGames = installFilter === 'uninstalled' ? [] : games;
-    fillGames('all-game-cards', libraryGames, Boolean(query.trim() || onlyFavorites || installFilter !== 'all'), uninstalled);
+    renderPcLibrary(games, query, onlyFavorites);
   }
+}
+
+function renderPcLibrary(games, query, onlyFavorites) {
+  const available = availableStoreGames();
+  const countByOrigin = new Map();
+  for (const origin of [...state.games.map(game => game.origin), ...available.map(game => game.provider)]) {
+    countByOrigin.set(origin, (countByOrigin.get(origin) || 0) + 1);
+  }
+  const select = byId('library-origin-filter');
+  const origin = countByOrigin.has(select.value) ? select.value : 'all';
+  const total = state.games.length + available.length;
+  const option = (label, id, count) => new Option(`${t(label)} (${count})`, id);
+  select.replaceChildren(option('Todas as origens', 'all', total), ...Object.entries(libraryOrigins)
+    .filter(([id]) => countByOrigin.has(id)).map(([id, label]) => option(label, id, countByOrigin.get(id))));
+  select.value = origin;
+
+  const installFilter = byId('library-install-filter').value;
+  const libraryGames = installFilter === 'uninstalled' ? [] : games.filter(game => origin === 'all' || game.origin === origin);
+  const uninstalled = !onlyFavorites && installFilter !== 'installed' ? available.filter(game =>
+    (origin === 'all' || game.provider === origin) && matches(game.name, query)) : [];
+  const displayed = libraryGames.length + uninstalled.length;
+  const scope = origin === 'all' ? total : countByOrigin.get(origin);
+  byId('library-game-count').textContent = displayed !== scope
+    ? t('{count} de {total} jogos', { count: displayed, total: scope })
+    : t(displayed === 1 ? '{count} jogo' : '{count} jogos', { count: displayed });
+  fillGames('all-game-cards', libraryGames,
+    Boolean(query.trim() || onlyFavorites || installFilter !== 'all' || origin !== 'all'), uninstalled);
+}
+
+function availableStoreGames() {
+  return Object.entries(state.ownedStoreGames || {}).flatMap(([provider, entries]) => entries.filter(entry => !entry.installed)
+    .map(entry => ({ ...entry, provider, source: t(libraryOrigins[provider] || provider), lastPlayed: 0 })));
 }
 
 function renderRoms() {
@@ -1121,9 +1157,13 @@ function allTvGames() {
   if (theaterCategory === 'rom') return orderedGames(roms.filter(game => !theaterSystem || systemOf(game) === theaterSystem));
   if (theaterCategory === 'favorites') return orderedGames(collection.filter(game => game.favorite));
   if (theaterCategory === 'recent') return orderedGames(collection.filter(game => game.lastPlayed));
-  if (theaterCategory === 'pc') return orderedGames();
+  if (theaterCategory === 'pc') return [...orderedGames(), ...orderedGames(tvStoreGames())];
   return orderedGames();
 }
+
+const tvStoreGames = () => state.tv?.showUninstalled === false ? [] : availableStoreGames();
+const tvGameKey = game => game?.provider ? `${game.provider}-${game.id}` : game?.id;
+const currentTvPage = games => games.slice(tvLibraryPage * tvPageSize, (tvLibraryPage + 1) * tvPageSize);
 
 function tvLayout() {
   return ['cockpit', 'gallery'].includes(state.tv?.layout) ? state.tv.layout : 'cinema';
@@ -1136,6 +1176,7 @@ function initialTvCategory(layout) {
 function changeTvCategory(category, system = '') {
   theaterCategory = category;
   theaterSystem = system;
+  tvLibraryPage = 0;
   const deck = byId('theater-deck');
   deck.scrollTop = 0;
   deck.scrollLeft = 0;
@@ -1166,27 +1207,34 @@ function selectTheaterGame(game) {
   const title = byId('theater-title');
   title.textContent = game?.name || t('Sua coleção');
   title.classList.toggle('tv-title-long', title.textContent.length > 23);
-  byId('theater-label').textContent = game ? [game.info?.genres, gameSource(game)].filter(Boolean).join(' · ') : t('Nenhum jogo nesta lista');
+  byId('theater-label').textContent = game
+    ? [game.info?.genres, gameSource(game), game.provider && t('Não instalado')].filter(Boolean).join(' · ')
+    : t('Nenhum jogo nesta lista');
   const synopsis = game?.info?.customDescription || game?.info?.description || '';
   byId('theater-summary').textContent = synopsis;
   byId('theater-summary').hidden = !synopsis;
   for (const id of ['theater-play', 'theater-details']) byId(id).hidden = !game;
+  const canPlay = Boolean(game && (!game.provider || canInstallStoreGame(game)));
+  byId('theater-play').hidden = !canPlay;
+  byId('theater-play').textContent = t(game?.provider ? 'Instalar jogo' : '▶ Jogar');
   const favorite = byId('theater-favorite');
-  favorite.hidden = !game;
+  favorite.hidden = !game || Boolean(game.provider);
   favorite.setAttribute('aria-pressed', String(Boolean(game?.favorite)));
   byId('theater-favorite-label').textContent = game?.favorite ? t('Remover dos favoritos') : t('Favoritar');
-  for (const id of ['tv-action-a', 'tv-action-y']) byId(id).disabled = !game;
+  byId('tv-action-a').disabled = !canPlay;
+  byId('tv-action-y').disabled = !game;
   setArt(byId('theater-art'), game ? gameBanners(game, tvLayout() !== 'cockpit') : [], 900, byId('theater-ambient'));
   setArt(byId('theater-portrait'), game ? gameArtwork(game) : [], 0, byId('theater-poster-ambient'));
   const tiles = [...byId('theater-deck').querySelectorAll('.tv-card')];
-  const center = tiles.findIndex(tile => tile.dataset.game === game?.id);
+  const key = tvGameKey(game);
+  const center = tiles.findIndex(tile => tile.dataset.game === key);
   const positions = [...byId('tv-gallery-positions').children];
   const currentPosition = Math.round(center * (positions.length - 1) / Math.max(1, tiles.length - 1));
   for (const [index, position] of positions.entries()) {
     position.classList.toggle('is-current', index === currentPosition);
   }
   for (const [index, tile] of tiles.entries()) {
-    tile.setAttribute('aria-pressed', String(tile.dataset.game === game?.id));
+    tile.setAttribute('aria-pressed', String(tile.dataset.game === key));
     if (tvLayout() === 'gallery') {
       const half = Math.floor(tiles.length / 2);
       const offset = (index - center + half + tiles.length) % tiles.length - half;
@@ -1197,9 +1245,9 @@ function selectTheaterGame(game) {
 }
 
 function stepGallery(direction) {
-  const games = allTvGames();
+  const games = currentTvPage(allTvGames());
   if (games.length < 2) return;
-  const index = games.findIndex(game => game.id === theaterGame?.id);
+  const index = games.findIndex(game => tvGameKey(game) === tvGameKey(theaterGame));
   selectTheaterGame(games[(index + direction + games.length) % games.length]);
 }
 
@@ -1268,10 +1316,17 @@ function renderTheater() {
     pc: 'Jogos de PC', rom: 'Biblioteca de emuladores', favorites: 'Favoritos', recent: 'Jogos recentes' };
   byId('tv-shelf-title').textContent = t(titles[theaterCategory]);
   renderTvSystems();
-  const games = allTvGames();
+  const library = allTvGames();
+  const pages = Math.max(1, Math.ceil(library.length / tvPageSize));
+  tvLibraryPage = Math.min(tvLibraryPage, pages - 1);
+  byId('tv-library-pages').hidden = pages === 1;
+  byId('tv-page-prev').disabled = tvLibraryPage === 0;
+  byId('tv-page-next').disabled = tvLibraryPage + 1 >= pages;
+  byId('tv-page-count').textContent = t('Página {page} de {total}', { page: tvLibraryPage + 1, total: pages });
+  const games = currentTvPage(library);
   if (layout === 'gallery') renderGalleryLaunchers();
   for (const id of ['gallery-prev', 'gallery-next']) byId(id).hidden = games.length < 2;
-  const selected = games.find(game => game.id === theaterGame?.id) || games[0];
+  const selected = games.find(game => tvGameKey(game) === tvGameKey(theaterGame)) || games[0];
   const positions = byId('tv-gallery-positions');
   const showPositions = layout === 'gallery' && games.length > 1;
   positions.hidden = !showPositions;
@@ -1285,8 +1340,9 @@ function renderTheater() {
       selectTheaterGame(game);
       playTheaterGame(node, game);
     }, 'tv-card');
-    tile.dataset.game = game.id;
-    tile.setAttribute('aria-label', game.name);
+    tile.dataset.game = tvGameKey(game);
+    tile.classList.toggle('tv-uninstalled', Boolean(game.provider));
+    tile.setAttribute('aria-label', game.provider ? `${game.name} · ${gameSource(game)} · ${t('Não instalado')}` : game.name);
     const image = el('img', 'tv-card-cover');
     image.alt = '';
     image.loading = 'lazy';
@@ -1317,6 +1373,7 @@ function renderTheater() {
   }
   selectTheaterGame(selected);
   if (active) items.find(item => item.dataset.game === active)?.focus({ preventScroll: true });
+  if (byId('tv-search-dialog').open) renderTvSearch();
 }
 
 function leaveTheater() {
@@ -1335,6 +1392,7 @@ function enterTheater() {
   setTvInput('desktop');
   theaterCategory = initialTvCategory(tvLayout());
   theaterSystem = '';
+  tvLibraryPage = 0;
   theaterGame = undefined;
   byId('theater').hidden = false;
   document.body.classList.add('theater-on');
@@ -1366,7 +1424,7 @@ function focusDirection(key) {
   }
   const controls = selector => [...root.querySelectorAll(selector)]
     .filter(node => !node.disabled && node.tabIndex >= 0 && node.getClientRects().length && getComputedStyle(node).visibility === 'visible');
-  if (dialog) {
+  if (dialog && dialog.id !== 'tv-search-dialog') {
     const items = controls(navigationTargets);
     if (!items.length) return;
     const direction = dx || dy;
@@ -1389,8 +1447,8 @@ function focusDirection(key) {
   const [x, y] = center(active);
   const header = byId('theater').querySelector('.tv-header-actions');
   const tabs = byId('theater-tabs');
-  const inHeader = header.contains(active);
-  const inTabs = tabs.contains(active);
+  const inHeader = !dialog && header.contains(active);
+  const inTabs = !dialog && tabs.contains(active);
   const menu = controls('.tv-navigation button');
   const settings = controls('.tv-header-actions button');
   const enterSettings = inTabs && (key === 'ArrowUp' || (key === 'ArrowRight' && active === tabs.lastElementChild));
@@ -1410,8 +1468,8 @@ function focusDirection(key) {
   const target = destination?.sort((a, b) => Math.abs(center(a)[0] - x) - Math.abs(center(b)[0] - x))[0] || candidates[0]?.node;
   if (target) {
     target.focus({ preventScroll: true });
-    if (theater && target.dataset.game && target.dataset.game !== theaterGame?.id) {
-      selectTheaterGame(allTvGames().find(game => game.id === target.dataset.game));
+    if (theater && target.dataset.game && target.dataset.game !== tvGameKey(theaterGame)) {
+      selectTheaterGame(currentTvPage(allTvGames()).find(game => tvGameKey(game) === target.dataset.game));
     }
     target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
@@ -1459,6 +1517,11 @@ function showTheaterInfo() {
 
 async function playTheaterGame(node, game = theaterGame) {
   if (!game || node.disabled) return;
+  if (game.provider) {
+    if (canInstallStoreGame(game)) await perform(node, () => queueStoreGame(game.provider, game.id));
+    else showGameDetails(game);
+    return;
+  }
   const restoreFocus = document.activeElement === node;
   notify(t('Abrindo {name}…', { name: game.name }));
   await perform(node, async () => {
@@ -1548,6 +1611,7 @@ byId('app-search-system').addEventListener('click', event =>
 byId('favorites-only').addEventListener('change', render);
 byId('add-game').addEventListener('click', event => addGameFromLibrary(event.currentTarget));
 byId('library-install-filter').addEventListener('change', render);
+byId('library-origin-filter').addEventListener('change', render);
 let downloadJobs = [];
 let steamJobs = [];
 let steamPoll;
@@ -1595,11 +1659,11 @@ function renderDownloadJobs() {
 }
 
 function renderAccounts() {
-  const options = state.stores.filter(store => ['epic', 'gog', 'amazon'].includes(store.id)).map(store => {
+  const options = state.stores.filter(store => ['steam', 'epic', 'gog', 'amazon'].includes(store.id)).map(store => {
     const connected = Object.hasOwn(state.ownedStoreGames || {}, store.id);
     const tile = button('', () => {
       byId('preferences-dialog').close();
-      openLinuxStoreLibrary(store);
+      openStoreAccount(store);
     }, 'settings-card account-tile');
     const label = el('span');
     label.append(el('strong', '', store.name), el('small', '', t(connected ? 'Sincronizar' : 'Conectar')));
@@ -1608,6 +1672,47 @@ function renderAccounts() {
   });
   byId('prefs-account-options').replaceChildren(...options);
 }
+
+function openStoreAccount(store) {
+  if (store.id !== 'steam') return openLinuxStoreLibrary(store);
+  const dialog = byId('steam-account-dialog');
+  byId('steam-account-form').reset();
+  byId('steam-account-status').textContent = '';
+  dialog.showModal();
+  return renderSteamAccount();
+}
+
+async function renderSteamAccount() {
+  const { profile, ready, saved, count } = await api.steamAccountInfo();
+  byId('steam-account-profile').value = profile || '';
+  byId('steam-account-key').required = !ready;
+  byId('steam-account-disconnect').hidden = count == null;
+  byId('steam-account-status').textContent = count == null ? '' : [
+    t(count === 1 ? '{count} jogo' : '{count} jogos', { count }),
+    !saved && t('Informe a chave novamente após reiniciar o PeraGames para sincronizar.')
+  ].filter(Boolean).join(' · ');
+}
+
+byId('steam-account-close').addEventListener('click', () => byId('steam-account-dialog').close());
+byId('steam-account-dialog').addEventListener('close', () => { byId('steam-account-key').value = ''; });
+byId('steam-account-help').addEventListener('click', event => perform(event.currentTarget, api.steamAccountHelp));
+byId('steam-account-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const input = byId('steam-account-key');
+  const profile = byId('steam-account-profile');
+  const status = byId('steam-account-status');
+  status.textContent = t('Consultando.');
+  if (await perform(byId('steam-account-sync'), () => api.syncSteamAccount({ profile: profile.value, key: input.value }))) {
+    input.value = '';
+    await renderSteamAccount();
+  } else status.textContent = '';
+});
+byId('steam-account-disconnect').addEventListener('click', async event => {
+  if (await perform(event.currentTarget, api.disconnectSteamAccount)) {
+    byId('steam-account-key').value = '';
+    await renderSteamAccount();
+  }
+});
 
 async function renderPreferencesTab(tab) {
   clearInterval(steamPoll);
@@ -1671,7 +1776,8 @@ async function openPreferences(tab = 'accounts') {
 }
 
 async function queueStoreGame(provider, id) {
-  if (!(await api.installLinuxStoreGame({ provider, id }))?.queued) return;
+  if (provider === 'steam') await api.steamInstall(id);
+  else if (!(await api.installLinuxStoreGame({ provider, id, useDefaultFolder: theater }))?.queued) return;
   for (const dialog of ['linux-store-dialog', 'game-editor']) {
     if (byId(dialog).open) byId(dialog).close();
   }
@@ -1825,6 +1931,78 @@ byId('app-update-install').addEventListener('click', async event => {
 });
 byId('enter-theater').addEventListener('click', enterTheater);
 byId('exit-theater').addEventListener('click', leaveTheater);
+function renderTvSearch() {
+  const results = byId('tv-search-results');
+  const selected = document.activeElement?.dataset.searchGame;
+  const query = titleForTvSearch(byId('tv-search-input').value).split(/\s+/).filter(Boolean);
+  const games = query.length ? [...state.games, ...(state.roms || []), ...tvStoreGames()]
+    .filter(game => {
+      const title = titleForTvSearch(game.name);
+      return query.every(word => title.includes(word));
+    }) : [];
+  const visible = games.slice(0, 8);
+  results.replaceChildren(...visible.map(game => {
+    const row = button('', () => {
+      byId('tv-search-dialog').close();
+      showGameDetails(game);
+    }, 'tv-search-result');
+    row.dataset.searchGame = tvGameKey(game);
+    row.append(el('strong', '', game.name), el('small', '',
+      [gameSource(game), game.provider && t('Não instalado')].filter(Boolean).join(' · ')));
+    return row;
+  }));
+  if (selected) [...results.children].find(row => row.dataset.searchGame === selected)?.focus({ preventScroll: true });
+  byId('tv-search-count').textContent = !query.length ? t('Digite parte do nome') : !games.length
+    ? t('Nenhum jogo encontrado.') : visible.length < games.length
+      ? t('{count} de {total} jogos', { count: visible.length, total: games.length })
+      : t(games.length === 1 ? '{count} jogo' : '{count} jogos', { count: games.length });
+}
+
+const titleForTvSearch = value => value.toLocaleLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
+
+function editTvSearch(key) {
+  const input = byId('tv-search-input');
+  const start = input.selectionStart;
+  const end = input.selectionEnd;
+  if (key === 'clear') input.value = '';
+  else if (key === 'delete') input.setRangeText('', start === end ? Math.max(0, start - 1) : start, end, 'end');
+  else if (input.value.length - (end - start) < input.maxLength) input.setRangeText(key, start, end, 'end');
+  renderTvSearch();
+}
+
+function renderTvKeyboard() {
+  const keys = [...'QWERTYUIOPASDFGHJKLÇZXCVBNM-\'0123456789'].map(letter =>
+    button(letter, () => editTvSearch(letter), 'tv-search-key'));
+  for (const [key, label, kind] of [['clear', 'Limpar', 'clear'], [' ', 'Espaço', 'space'], ['delete', 'Apagar', 'delete']]) {
+    keys.push(button(t(label), () => editTvSearch(key), 'tv-search-key tv-key-' + kind));
+  }
+  byId('tv-search-keyboard').replaceChildren(...keys);
+}
+
+byId('tv-search-open').addEventListener('click', () => {
+  byId('tv-search-input').value = '';
+  renderTvKeyboard();
+  renderTvSearch();
+  byId('tv-search-dialog').showModal();
+  const initial = document.body.dataset.input === 'gamepad'
+    ? byId('tv-search-keyboard').firstElementChild : byId('tv-search-input');
+  initial?.focus();
+});
+byId('tv-search-close').addEventListener('click', () => byId('tv-search-dialog').close());
+byId('tv-search-input').addEventListener('input', renderTvSearch);
+byId('tv-search-input').addEventListener('keydown', event => {
+  if (event.key === 'Enter') byId('tv-search-results').firstElementChild?.click();
+});
+for (const [id, direction] of [['tv-page-prev', -1], ['tv-page-next', 1]]) {
+  byId(id).addEventListener('click', event => {
+    tvLibraryPage += direction;
+    const deck = byId('theater-deck');
+    deck.scrollTop = 0;
+    deck.scrollLeft = 0;
+    renderTheater();
+    if (event.currentTarget.disabled) byId(direction > 0 ? 'tv-page-prev' : 'tv-page-next').focus();
+  });
+}
 for (const id of ['theater-play', 'tv-action-a']) {
   byId(id).addEventListener('click', event => playTheaterGame(event.currentTarget));
 }
@@ -1877,8 +2055,15 @@ const layoutOptions = [...document.querySelectorAll('.tv-layout-option')];
 byId('tv-appearance-open').addEventListener('click', () => {
   for (const tile of layoutOptions) tile.setAttribute('aria-pressed', String(tile.dataset.layout === tvLayout()));
   byId('tv-appearance-feedback').hidden = true;
+  byId('tv-show-uninstalled').checked = state.tv?.showUninstalled !== false;
   byId('tv-appearance').showModal();
   layoutOptions.find(tile => tile.dataset.layout === tvLayout())?.focus();
+});
+byId('tv-show-uninstalled').addEventListener('change', async event => {
+  const box = event.currentTarget;
+  if (!await perform(box, () => api.setTvUninstalled(box.checked))) {
+    box.checked = state.tv?.showUninstalled !== false;
+  }
 });
 byId('tv-appearance-close').addEventListener('click', () => byId('tv-appearance').close());
 for (const tile of layoutOptions) {
@@ -1926,7 +2111,11 @@ byId('emulator-market').addEventListener('click', () => {
 byId('game-close').addEventListener('click', () => byId('game-editor').close());
 byId('linux-store-close').addEventListener('click', () => byId('linux-store-dialog').close());
 byId('linux-store-search').addEventListener('input', renderLinuxStoreGames);
-byId('linux-store-setup').addEventListener('click', () => storeDialogAction(provider => api.openLinuxStore({ provider, setup: true })));
+byId('linux-store-setup').addEventListener('click', () => storeDialogAction(async provider => {
+  if (!storeDialogAutoSetup) return api.openLinuxStore({ provider, setup: true });
+  await api.setupLinuxStoreTool(provider);
+  return loadLinuxStoreLibrary(provider);
+}, storeDialogAutoSetup ? 'Baixando e verificando o componente da loja.' : 'Consultando.'));
 byId('linux-store-system').addEventListener('click', () =>
   storeDialogAction(() => api.openLinuxSoftware(storeDialogCommand)));
 byId('linux-store-tool').addEventListener('click', () => storeDialogAction(async provider => {

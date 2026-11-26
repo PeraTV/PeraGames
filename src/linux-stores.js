@@ -5,6 +5,7 @@ const { constants } = require('node:fs');
 const path = require('node:path');
 const { findLinuxCommand, runHostTool, launch, fileExists } = require('./system');
 const { readProgress } = require('./downloads');
+const { findStoreTool } = require('./store-tools');
 
 const providers = {
   epic: {
@@ -53,7 +54,8 @@ async function storeConfig(provider, root, linked) {
   const config = providers[provider];
   const commandName = config.tool;
   const custom = await fileExists(linked) && await fs.access(linked, constants.X_OK).then(() => true, () => false);
-  const tool = custom ? linked : await findLinuxCommand(commandName + (process.platform === 'win32' ? '.exe' : ''), process.env);
+  const tool = custom ? linked : await findStoreTool(root, provider) ||
+    await findLinuxCommand(commandName + (process.platform === 'win32' ? '.exe' : ''), process.env);
   if (!tool) return { ...config, commandName, ready: false };
   const dir = path.join(root, 'stores', provider);
   await fs.mkdir(dir, { recursive: true, mode: 0o700 });
