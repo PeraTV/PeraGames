@@ -20,7 +20,7 @@
       "cp -a electron-app/. /app/share/peragames/",
       "install -Dm755 peragames-flatpak /app/bin/peragames-flatpak",
       "install -Dm644 io.github.PeraTV.PeraGames.desktop /app/share/applications/io.github.PeraTV.PeraGames.desktop",
-      "install -Dm644 electron-app/resources/app/src/assets/pera-mark.png /app/share/icons/hicolor/512x512/apps/io.github.PeraTV.PeraGames.png"
+      "install -Dm644 electron-app/resources/app/src/assets/pera-mark-512.png /app/share/icons/hicolor/512x512/apps/io.github.PeraTV.PeraGames.png"
     ],
     "sources": [
       { "type": "dir", "path": "electron-app", "dest": "electron-app" },

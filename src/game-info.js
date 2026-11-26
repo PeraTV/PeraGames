@@ -2,7 +2,8 @@
 
 const STEAM = 'https://store.steampowered.com';
 const CDN = 'https://shared.cloudflare.steamstatic.com/store_item_assets/';
-const WIKI = 'https://pt.wikipedia.org';
+const lookupLocale = language => language === 'en' ? { steam: 'english', country: 'US', wiki: 'en' } :
+  { steam: 'brazilian', country: 'BR', wiki: 'pt' };
 const TIMEOUT = 4500;
 const legoPoster = 'https://m.media-amazon.com/images/M/MV5BNDhlYTFmOGMtY2YxZi00ODczLTg0NTQtZDJiMzBjZWQ4YzU2XkEyXkFqcGc%40._V1_.jpg';
 
@@ -35,14 +36,15 @@ function steamAssets(item) {
   return { cover: url(assets?.library_capsule_2x || assets?.library_capsule), hero: url(assets?.library_hero) };
 }
 
-async function browseSteam(appIds) {
+async function browseSteam(appIds, language) {
+  const locale = lookupLocale(language);
   if (!appIds.length) return [];
   const batches = [];
   for (let offset = 0; offset < appIds.length; offset += 40) batches.push(appIds.slice(offset, offset + 40));
   const responses = await Promise.all(batches.map(async batch => {
     const query = {
       ids: batch.map(appid => ({ appid: Number(appid) })),
-      context: { language: 'brazilian', country_code: 'BR', steam_realm: 1 },
+      context: { language: locale.steam, country_code: locale.country, steam_realm: 1 },
       data_request: { include_assets: true, include_basic_info: true }
     };
     const params = new URLSearchParams({ input_json: JSON.stringify(query) });
@@ -67,36 +69,39 @@ function plainText(text = '') {
   return String(text ?? '').replace(/<[^>]*>/g, '').replace(/&(#39|nbsp|amp|quot|apos|lt|gt);/g, (_, key) => entities[key]).trim();
 }
 
-async function wikiInfo(name) {
+async function wikiInfo(name, language) {
+  const english = language === 'en';
+  const wiki = 'https://' + lookupLocale(language).wiki + '.wikipedia.org';
   const query = new URLSearchParams({
-    action: 'query', generator: 'search', gsrsearch: '"' + name.replaceAll('"', '') + '" jogo eletrônico',
+    action: 'query', generator: 'search', gsrsearch: '"' + name.replaceAll('"', '') + (english ? '" video game' : '" jogo eletrônico'),
     gsrlimit: '6', prop: 'extracts|pageimages', exintro: '1', explaintext: '1', exsentences: '4',
     pithumbsize: '650', pilicense: 'any', format: 'json', formatversion: '2'
   });
-  const result = await json(WIKI + '/w/api.php?' + query);
+  const result = await json(wiki + '/w/api.php?' + query);
   const key = titleKey(name);
   const item = result?.query?.pages?.find(page => titleKey(page.title.replace(/\s*\(.*?\)$/, '')) === key &&
-    typeof page.extract === 'string' && /jogo|videogame/i.test(page.extract.slice(0, 350)));
+    typeof page.extract === 'string' && /jogo|video\s?game/i.test(page.extract.slice(0, 350)));
   if (!item) return null;
   const cover = /^https:\/\/upload\.wikimedia\.org\//.test(item.thumbnail?.source) ? item.thumbnail.source : '';
-  return { description: item.extract.slice(0, 1200), cover, source: 'Wikipédia', url: WIKI + '/?curid=' + item.pageid };
+  return { description: item.extract.slice(0, 1200), cover, source: english ? 'Wikipedia' : 'Wikipédia', url: wiki + '/?curid=' + item.pageid };
 }
 
-async function lookupGame(game, cachedItem) {
+async function lookupGame(game, cachedItem, language) {
+  const locale = lookupLocale(language);
   const name = cleanTitle(game.name);
   let id = game.appId;
   let serviceError;
   if (!id) {
-    const query = new URLSearchParams({ term: name, l: 'brazilian', cc: 'BR' });
+    const query = new URLSearchParams({ term: name, l: locale.steam, cc: locale.country });
     const found = await json(STEAM + '/api/storesearch/?' + query).catch(error => { serviceError = error; });
     const match = found?.items?.find(item => titleKey(item.name) === titleKey(name) && /^\d+$/.test(String(item.id)));
     if (match) id = String(match.id);
   }
   if (id) {
-    const query = new URLSearchParams({ appids: id, l: 'brazilian', cc: 'BR' });
+    const query = new URLSearchParams({ appids: id, l: locale.steam, cc: locale.country });
     const [result, assetsResult] = await Promise.all([
       json(STEAM + '/api/appdetails?' + query).catch(error => { serviceError = error; }),
-      cachedItem ? Promise.resolve([cachedItem]) : browseSteam([id])
+      cachedItem ? Promise.resolve([cachedItem]) : browseSteam([id], language)
     ]);
     const steam = result?.[id]?.data;
     const item = assetsResult[0];
@@ -119,7 +124,7 @@ async function lookupGame(game, cachedItem) {
     }
   }
   if (!game.appId) {
-    const wikipedia = await wikiInfo(name).catch(error => { serviceError = error; });
+    const wikipedia = await wikiInfo(name, language).catch(error => { serviceError = error; });
     if (wikipedia) return wikipedia;
   }
   if (serviceError) throw new Error('Não foi possível consultar os serviços de jogos agora.');

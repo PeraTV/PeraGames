@@ -1,6 +1,25 @@
 'use strict';
 
 const api = window.pera;
+const { languageFor, translator } = window.peraLanguage;
+let t = translator(navigator.language);
+
+function localizeMarkup(locale) {
+  const language = languageFor(locale);
+  document.documentElement.lang = language;
+  t = translator(locale);
+  if (language !== 'en') return;
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const label = node.data.trim();
+    if (label) node.data = node.data.replace(label, () => t(label));
+  }
+  for (const node of document.querySelectorAll('[aria-label], [title], [placeholder], [alt]')) {
+    for (const attr of ['aria-label', 'title', 'placeholder', 'alt']) {
+      if (node.hasAttribute(attr)) node.setAttribute(attr, t(node.getAttribute(attr)));
+    }
+  }
+}
 const byId = id => document.getElementById(id);
 const galleryDefaults = [['steam', 'Steam'], ['lutris', 'Lutris'], ['heroic', 'Heroic'], ['retroarch', 'RetroArch']];
 const galleryPreferencesKey = 'peragames.galleryLaunchers';
@@ -104,7 +123,7 @@ function notify(message) {
     byId('tv-settings').open ? byId('tv-settings-feedback') :
     byId('game-editor').open ? byId('game-feedback') : byId('notice');
   clearTimeout(toastTimer);
-  notice.textContent = message;
+  notice.textContent = t(message);
   notice.hidden = false;
   toastTimer = setTimeout(() => { notice.hidden = true; }, 5000);
 }
@@ -214,15 +233,16 @@ function gameBanners(game, preferSteamHero = false) {
 }
 
 function gameSource(game) {
-  return systems.find(([id]) => game.system === id)?.[1] || romEmulators.find(([id]) => game.emulator === id)?.[1] || game.source;
+  const system = systems.find(([id]) => game.system === id);
+  return system ? t(system[1]) : romEmulators.find(([id]) => game.emulator === id)?.[1] || game.source;
 }
 
 function gameCard(game) {
   const card = el('article', 'game-card');
   if (game.emulator) card.dataset.system = systemOf(game);
   const art = button('', () => showGameDetails(game), 'game-art');
-  art.setAttribute('aria-label', 'Detalhes de ' + game.name);
-  art.title = 'Ver detalhes de ' + game.name;
+  art.setAttribute('aria-label', t('Detalhes de {name}', { name: game.name }));
+  art.title = t('Ver detalhes de {name}', { name: game.name });
   art.append(el('span', 'game-placeholder', game.name));
   if (game.appId || game.cover || game.artwork?.length) {
     const image = el('img');
@@ -235,17 +255,17 @@ function gameCard(game) {
   const info = el('div', 'game-info');
   info.append(el('h3', '', game.name), el('p', '', gameSource(game)));
   const actions = el('div', 'actions');
-  const play = button('▶ Jogar', node => perform(node, () => api.play(game.id)), 'button primary');
+  const play = button(t('▶ Jogar'), node => perform(node, () => api.play(game.id)), 'button primary');
   const favorite = button(game.favorite ? '★' : '☆', node => perform(node, () => api.favorite(game.id)), 'button');
-  favorite.setAttribute('aria-label', 'Favorito: ' + game.name);
+  favorite.setAttribute('aria-label', t('Favorito: {name}', { name: game.name }));
   favorite.setAttribute('aria-pressed', String(game.favorite));
-  const feature = button('Fixar', () => editFeature(game.id), 'button');
-  feature.title = 'Personalizar destaque com ' + game.name;
+  const feature = button(t('Fixar'), () => editFeature(game.id), 'button');
+  feature.title = t('Personalizar destaque com {name}', { name: game.name });
   actions.append(play, favorite);
   if (!game.emulator) actions.append(feature);
   if (!game.appId) {
-    actions.append(button('Remover', node => {
-      if (window.confirm('Remover este jogo da coleção do PeraGames?')) perform(node, () => api.removeGame(game.id));
+    actions.append(button(t('Remover'), node => {
+      if (window.confirm(t('Remover este jogo da coleção do PeraGames?'))) perform(node, () => api.removeGame(game.id));
     }, 'plain'));
   }
   info.append(actions);
@@ -258,13 +278,13 @@ function fillGames(id, games, filtered) {
   grid.replaceChildren(...games.map(gameCard));
   if (games.length) return;
   const romLibrary = id === 'rom-game-cards';
-  const message = !loaded ? 'Carregando biblioteca…' : filtered ? 'Nenhum jogo encontrado.' :
-    romLibrary ? 'Escolha o emulador e adicione arquivos de jogos ou importe uma pasta.' :
-      'Adicione um jogo local ou atualize sua biblioteca da Steam.';
+  const message = !loaded ? t('Carregando biblioteca…') : filtered ? t('Nenhum jogo encontrado.') :
+    romLibrary ? t('Escolha o emulador e adicione arquivos de jogos ou importe uma pasta.') :
+      t('Adicione um jogo local ou atualize sua biblioteca da Steam.');
   const empty = el('div', 'empty');
   empty.append(el('p', '', message));
   if (loaded && !filtered && !romLibrary) {
-    empty.append(button('Adicionar jogo', node => perform(node, api.addGame), 'button primary'));
+    empty.append(button(t('Adicionar jogo'), node => perform(node, api.addGame), 'button primary'));
   }
   grid.append(empty);
 }
@@ -297,14 +317,14 @@ function renderGameDetails() {
   byId('game-title').textContent = game.name;
   const favorite = byId('game-favorite');
   favorite.setAttribute('aria-pressed', String(Boolean(game.favorite)));
-  favorite.textContent = game.favorite ? '★ Remover dos favoritos' : '☆ Favoritar';
+  favorite.textContent = game.favorite ? t('★ Remover dos favoritos') : t('☆ Favoritar');
   byId('game-platform').textContent = [gameSource(game), game.discId].filter(Boolean).join(' · ');
-  byId('game-summary').textContent = info.customDescription || info.description || 'A sinopse aparece aqui após a busca ou quando você adicionar uma.';
+  byId('game-summary').textContent = info.customDescription || info.description || t('A sinopse aparece aqui após a busca ou quando você adicionar uma.');
   const facts = byId('game-facts');
   const labels = [['Biblioteca', gameSource(game)], ['Gêneros', info.genres], ['Lançamento', info.date], ['Desenvolvedora', info.developer]];
   facts.replaceChildren(...labels.filter(([, value]) => value).map(([label, value]) => {
     const row = el('div');
-    row.append(el('dt', '', label), el('dd', '', value));
+    row.append(el('dt', '', t(label)), el('dd', '', value));
     return row;
   }));
   setArt(byId('game-poster'), gameArtwork(game));
@@ -313,7 +333,7 @@ function renderGameDetails() {
   byId('game-reset-backdrop').hidden = !game.customBackdrop;
   const source = byId('game-info-source');
   source.hidden = !info.source;
-  source.textContent = (info.source || '') + ' ↗';
+  source.textContent = t(info.source || '') + ' ↗';
   byId('game-query').disabled = Boolean(game.appId);
   byId('game-query-label').hidden = Boolean(game.appId);
 }
@@ -326,7 +346,8 @@ function showGameDetails(game) {
   byId('game-customize').open = false;
   renderGameDetails();
   byId('game-editor').showModal();
-  if (!game.info?.description && !game.info?.customDescription) byId('game-lookup').click();
+  if (!game.info?.customDescription && (!game.info?.description ||
+      (game.info.language || 'pt-BR') !== document.documentElement.lang)) byId('game-lookup').click();
 }
 
 function highlightGames() {
@@ -352,7 +373,7 @@ function renderHero() {
   const game = rotatingGame || (setting?.gameId ? featuredGame(setting.gameId) : setting ? null : defaultGame);
   const custom = Boolean(setting);
   const title = byId('hero-title');
-  title.textContent = emptyRotation ? 'Nenhum jogo neste sistema' :
+  title.textContent = emptyRotation ? t('Nenhum jogo neste sistema') :
     setting?.title || game?.name || (custom ? 'Meu destaque' : 'Cyberpunk 2077');
   title.title = title.textContent;
   title.classList.toggle('hero-title-long', title.textContent.length > 31);
@@ -369,7 +390,7 @@ function renderHero() {
   }
   const trigger = byId('featured');
   trigger.hidden = emptyRotation || (custom && !game);
-  trigger.textContent = game ? '▶ Jogar' : 'Ver na Steam ↗';
+  trigger.textContent = game ? t('▶ Jogar') : t('Ver na Steam ↗');
   trigger.onclick = () => perform(trigger, game ? () => api.play(game.id) : api.featureStore);
   resetHomeRotation();
 }
@@ -395,10 +416,10 @@ function resetHomeRotation() {
 function editFeature(gameId) {
   const setting = state.featured;
   const selected = gameId ?? setting?.gameId ?? '';
-  const options = [new Option('Sem jogo vinculado', ''), ...orderedGames().map(game => new Option(game.name, game.id))];
+  const options = [new Option(t('Sem jogo vinculado'), ''), ...orderedGames().map(game => new Option(game.name, game.id))];
   byId('feature-game').replaceChildren(...options);
   byId('feature-game').value = featuredGame(selected) ? selected : '';
-  byId('feature-source').replaceChildren(...highlightSources.map(([id, name]) => new Option(name, id)));
+  byId('feature-source').replaceChildren(...highlightSources.map(([id, name]) => new Option(t(name), id)));
   byId('feature-source').value = homePrefs.source;
   byId('feature-autoplay').checked = gameId ? false : homePrefs.autoplay;
   byId('feature-title').value = gameId ? '' : setting?.title || '';
@@ -440,25 +461,25 @@ function details(item) {
   body.append(el('p', '', item.description));
   const facts = el('dl');
   const platform = { win32: 'Windows', darwin: 'macOS' }[state.platform] || 'Linux';
-  const status = item.installed ? 'Disponível' : item.userAdded ? 'Executável indisponível' : item.available ? 'Não instalado' : 'Indisponível no ' + platform;
-  for (const [term, value] of [['Sistema', platform], ['Fonte', item.userAdded ? 'Atalho local' : item.available || item.installed ? item.downloadSource : '—'],
-    ['Estado', status]]) {
+  const status = item.installed ? t('Disponível') : item.userAdded ? t('Executável indisponível') : item.available ? t('Não instalado') : t('Indisponível no {system}', { system: platform });
+  for (const [term, value] of [[t('Sistema'), platform], [t('Fonte'), item.userAdded ? t('Atalho local') : item.available || item.installed ? item.downloadSource : '—'],
+    [t('Estado'), status]]) {
     const row = el('div');
     row.append(el('dt', '', term), el('dd', '', value));
     facts.append(row);
   }
   body.append(facts);
   if (item.installed || item.available) {
-    const label = item.installed ? 'Abrir' : state.platform === 'linux' ? 'Instalar no Linux' : 'Baixar para ' + platform;
+    const label = item.installed ? t('Abrir') : state.platform === 'linux' ? t('Instalar no Linux') : t('Baixar para {system}', { system: platform });
     body.append(button(label, node => perform(node, () => item.installed ? api.openStore(item.id) : api.downloadStore(item.id)), 'button primary launch'));
   }
   const links = el('div', 'detail-links');
-  if (item.website) links.append(button('Página oficial ↗', node => perform(node, () => api.storeWebsite(item.id)), 'plain'));
+  if (item.website) links.append(button(t('Página oficial ↗'), node => perform(node, () => api.storeWebsite(item.id)), 'plain'));
   if (item.available || item.userAdded) {
-    links.append(button(item.custom ? 'Trocar executável' : 'Localizar executável', node => perform(node, () => api.linkStore(item.id)), 'plain'));
+    links.append(button(item.custom ? t('Trocar executável') : t('Localizar executável'), node => perform(node, () => api.linkStore(item.id)), 'plain'));
   }
   if (item.custom) {
-    links.append(button(item.userAdded ? 'Remover atalho' : 'Desvincular', node => perform(node, () => api.unlinkStore(item.id)), 'plain'));
+    links.append(button(item.userAdded ? t('Remover atalho') : t('Desvincular'), node => perform(node, () => api.unlinkStore(item.id)), 'plain'));
   }
   body.append(links);
   aside.append(art, body);
@@ -473,7 +494,7 @@ function renderCatalog() {
   const showBanner = filter === 'all' && !query.trim();
   byId('market-banner').hidden = !showBanner;
   byId('catalog-tabs').replaceChildren(...tabs.map(([id, label]) => {
-    const tab = button(label, () => {
+    const tab = button(t(label), () => {
       filter = id;
       renderCatalog();
       byId('catalog-tabs').querySelector('[aria-pressed="true"]')?.focus();
@@ -494,9 +515,9 @@ function renderCatalog() {
     const quick = preferred.length ? preferred.map(id => entries.find(item => item.id === id)).filter(Boolean) : entries.slice(0, limit);
     grid.append(...(showBanner ? quick : entries).map(item => marketTile(item, item === current)));
     const heading = el('div', 'market-heading');
-    heading.append(el('h2', '', label));
+    heading.append(el('h2', '', t(label)));
     if (showBanner && entries.length > limit) {
-      heading.append(button('Ver todos →', () => {
+      heading.append(button(t('Ver todos →'), () => {
         filter = category;
         renderCatalog();
         byId('catalog-tabs').querySelector('[aria-pressed="true"]')?.focus();
@@ -505,7 +526,7 @@ function renderCatalog() {
     section.append(heading, grid);
     sections.push(section);
   }
-  const emptyLabel = !loaded ? 'Buscando aplicativos…' : filter === 'installed' ? 'Nenhum aplicativo detectado.' : 'Nenhum aplicativo encontrado.';
+  const emptyLabel = !loaded ? t('Buscando aplicativos…') : filter === 'installed' ? t('Nenhum aplicativo detectado.') : t('Nenhum aplicativo encontrado.');
   byId('store-groups').replaceChildren(...sections, ...(sections.length ? [] : [el('p', 'empty', emptyLabel)]));
   details(current);
   document.querySelector('.market').classList.toggle('without-details', !current);
@@ -572,19 +593,19 @@ function renderRoms() {
     graphic.dataset.system = id;
     graphic.append(icon);
     tab.dataset.system = id;
-    tab.append(graphic, el('strong', '', name), el('small', '', label + ' · ' + count + (count === 1 ? ' jogo' : ' jogos')));
+    tab.append(graphic, el('strong', '', t(name)), el('small', '', t(label) + ' · ' + t(count === 1 ? '{count} jogo' : '{count} jogos', { count })));
     return tab;
   });
   byId('emulator-systems').replaceChildren(...options);
   const selected = availableSystems.find(([id]) => romFilter === id);
-  byId('rom-heading').textContent = selected?.[1] || 'Todos os jogos';
+  byId('rom-heading').textContent = t(selected?.[1] || 'Todos os jogos');
   const configure = byId('rom-configure');
   const emulator = selected?.[3] || byId('rom-emulator').value;
   const installed = state.stores.find(item => item.id === emulator)?.installed;
   configure.hidden = Boolean(installed) || emulator === 'android';
-  byId('add-roms').textContent = emulator === 'android' ? '+ Adicionar atalhos' : '+ Adicionar ROMs';
+  byId('add-roms').textContent = emulator === 'android' ? t('+ Adicionar atalhos') : t('+ Adicionar ROMs');
   byId('add-rom-folder').hidden = emulator === 'android';
-  configure.textContent = 'Localizar ' + (romEmulators.find(([id]) => id === emulator)?.[1] || 'emulador');
+  configure.textContent = t('Localizar {name}', { name: romEmulators.find(([id]) => id === emulator)?.[1] || t('emulador') });
   configure.onclick = () => perform(configure, () => api.linkStore(emulator));
   byId('dolphin-adapter-option').hidden = emulator !== 'dolphin';
   byId('dolphin-adapter').checked = Boolean(state.dolphinPassthrough);
@@ -646,8 +667,8 @@ function renderTvSystems() {
     const image = el('img');
     image.src = 'assets/tv/' + artwork[id] + '.jpg';
     image.alt = '';
-    tile.setAttribute('aria-label', name);
-    tile.append(image, el('span', '', name));
+    tile.setAttribute('aria-label', t(name));
+    tile.append(image, el('span', '', t(name)));
     return tile;
   });
   byId('tv-systems-list').replaceChildren(...cards);
@@ -657,9 +678,9 @@ function renderTvSystems() {
 function selectTheaterGame(game) {
   theaterGame = game;
   const title = byId('theater-title');
-  title.textContent = game?.name || 'Sua coleção';
+  title.textContent = game?.name || t('Sua coleção');
   title.classList.toggle('tv-title-long', title.textContent.length > 23);
-  byId('theater-label').textContent = game ? [game.info?.genres, gameSource(game)].filter(Boolean).join(' · ') : 'Nenhum jogo nesta lista';
+  byId('theater-label').textContent = game ? [game.info?.genres, gameSource(game)].filter(Boolean).join(' · ') : t('Nenhum jogo nesta lista');
   const synopsis = game?.info?.customDescription || game?.info?.description || '';
   byId('theater-summary').textContent = synopsis;
   byId('theater-summary').hidden = !synopsis;
@@ -667,7 +688,7 @@ function selectTheaterGame(game) {
   const favorite = byId('theater-favorite');
   favorite.hidden = !game;
   favorite.setAttribute('aria-pressed', String(Boolean(game?.favorite)));
-  byId('theater-favorite-label').textContent = game?.favorite ? 'Remover dos favoritos' : 'Favoritar';
+  byId('theater-favorite-label').textContent = game?.favorite ? t('Remover dos favoritos') : t('Favoritar');
   for (const id of ['tv-action-a', 'tv-action-y']) byId(id).disabled = !game;
   setArt(byId('theater-art'), game ? gameBanners(game, tvLayout() !== 'cockpit') : [], 900, byId('theater-ambient'));
   setArt(byId('theater-portrait'), game ? gameArtwork(game) : [], 0, byId('theater-poster-ambient'));
@@ -749,8 +770,8 @@ function renderTheater() {
   const layout = tvLayout();
   byId('theater').dataset.layout = layout;
   byId('theater').dataset.category = theaterCategory;
-  byId('tv-pc-label').textContent = layout === 'gallery' ? 'Biblioteca' : 'Jogos de PC';
-  byId('tv-rom-label').textContent = 'Emuladores';
+  byId('tv-pc-label').textContent = t(layout === 'gallery' ? 'Biblioteca' : 'Jogos de PC');
+  byId('tv-rom-label').textContent = t('Emuladores');
   for (const tab of document.querySelectorAll('[data-tv]')) {
     tab.setAttribute('aria-pressed', String(tab.dataset.tv === theaterCategory));
   }
@@ -759,7 +780,7 @@ function renderTheater() {
   }
   const titles = { home: layout === 'cockpit' ? 'Sua próxima partida' : 'Seus jogos',
     pc: 'Jogos de PC', rom: 'Biblioteca de emuladores', favorites: 'Favoritos', recent: 'Jogos recentes' };
-  byId('tv-shelf-title').textContent = titles[theaterCategory];
+  byId('tv-shelf-title').textContent = t(titles[theaterCategory]);
   renderTvSystems();
   const games = allTvGames();
   if (layout === 'gallery') renderGalleryLaunchers();
@@ -918,7 +939,7 @@ function setTvInput(input) {
   root.dataset.input = input;
   document.body.dataset.input = input;
   const controller = input === 'gamepad';
-  byId('tv-input-label').textContent = controller ? 'Controle' : 'Teclado e mouse';
+  byId('tv-input-label').textContent = controller ? t('Controle') : t('Teclado e mouse');
   byId('tv-action-a').firstElementChild.textContent = controller ? 'A' : 'Enter';
   byId('tv-action-b').firstElementChild.textContent = controller ? 'B' : 'Esc';
   byId('tv-shoulder-hint').hidden = !controller;
@@ -953,7 +974,7 @@ function showTheaterInfo() {
 async function playTheaterGame(node, game = theaterGame) {
   if (!game || node.disabled) return;
   const restoreFocus = document.activeElement === node;
-  notify('Abrindo ' + game.name + '…');
+  notify(t('Abrindo {name}…', { name: game.name }));
   await perform(node, async () => {
     const next = await api.play(game.id);
     if (next?.games) state = next;
@@ -1030,7 +1051,7 @@ for (const control of document.querySelectorAll('[data-window]')) {
 }
 api.onMaximized(maximized => {
   const control = document.querySelector('[data-window="maximize"]');
-  control.title = maximized ? 'Restaurar' : 'Maximizar';
+  control.title = maximized ? t('Restaurar') : t('Maximizar');
   control.setAttribute('aria-label', control.title);
 });
 byId('all-games').addEventListener('click', () => switchPage('library'));
@@ -1045,23 +1066,23 @@ async function checkAppUpdate() {
   const release = byId('app-update-release');
   const install = byId('app-update-install');
   if (check.disabled) return;
-  status.textContent = 'Consultando atualizações…';
+  status.textContent = t('Consultando atualizações…');
   release.hidden = true;
   install.hidden = true;
   check.disabled = true;
   try {
     const { version, status: result, latest, installable } = await api.checkAppUpdate();
     const messages = {
-      unconfigured: 'A publicação das atualizações do PeraGames ainda não foi configurada.',
-      'no-release': 'Ainda não há uma versão publicada.',
-      current: 'O PeraGames está atualizado.',
-      available: 'A versão ' + latest + ' está disponível.'
+      unconfigured: t('A publicação das atualizações do PeraGames ainda não foi configurada.'),
+      'no-release': t('Ainda não há uma versão publicada.'),
+      current: t('O PeraGames está atualizado.'),
+      available: t('A versão {version} está disponível.', { version: latest })
     };
-    status.textContent = 'Versão instalada: ' + version + '. ' + messages[result];
+    status.textContent = t('Versão instalada: {version}. {message}', { version, message: messages[result] });
     release.hidden = result !== 'available' || installable;
     install.hidden = !installable;
   } catch {
-    status.textContent = 'Não foi possível verificar a atualização. Tente novamente.';
+    status.textContent = t('Não foi possível verificar a atualização. Tente novamente.');
   } finally {
     check.disabled = false;
   }
@@ -1079,14 +1100,14 @@ byId('app-update-install').addEventListener('click', async event => {
   const check = byId('app-update-check');
   button.disabled = true;
   check.disabled = true;
-  status.textContent = 'Baixando e verificando a atualização…';
+  status.textContent = t('Baixando e verificando a atualização…');
   try {
     const installed = await api.installAppUpdate();
-    status.textContent = installed?.restart ? 'Atualização instalada. Feche e reabra o PeraGames pelo menu.' :
-      'A atualização está pronta para ser instalada.';
+    status.textContent = installed?.restart ? t('Atualização instalada. Feche e reabra o PeraGames pelo menu.') :
+      t('A atualização está pronta para ser instalada.');
     button.hidden = true;
   } catch (error) {
-    status.textContent = error.message;
+    status.textContent = t(error.message);
   } finally {
     button.disabled = false;
     check.disabled = false;
@@ -1166,7 +1187,7 @@ for (const tile of layoutOptions) {
 }
 byId('tv-settings-open').addEventListener('click', () => {
   const system = { win32: 'Windows', darwin: 'macOS' }[state.platform] || 'Linux';
-  byId('tv-login-label').textContent = 'Iniciar no Modo TV ao entrar no ' + system;
+  byId('tv-login-label').textContent = t('Iniciar no Modo TV ao entrar no {system}', { system });
   byId('tv-open-on-launch').checked = Boolean(state.tv?.openOnLaunch);
   byId('tv-on-login').checked = Boolean(state.tv?.atLogin);
   byId('tv-settings-feedback').hidden = true;
@@ -1196,7 +1217,7 @@ byId('game-close').addEventListener('click', () => byId('game-editor').close());
 byId('game-lookup').addEventListener('click', async event => {
   const node = event.currentTarget;
   const label = node.textContent;
-  node.textContent = 'Consultando…';
+  node.textContent = t('Consultando…');
   byId('game-feedback').hidden = true;
   await perform(node, () => api.lookupGame({ id: selectedGame, query: byId('game-query').value }));
   node.textContent = label;
@@ -1211,7 +1232,7 @@ byId('game-play').addEventListener('click', event => perform(event.currentTarget
 byId('game-favorite').addEventListener('click', event => perform(event.currentTarget, () => api.favorite(selectedGame)));
 byId('game-info-source').addEventListener('click', event => perform(event.currentTarget, () => api.gameInfoSource(selectedGame)));
 byId('game-save-info').addEventListener('click', event => perform(event.currentTarget, () =>
-  api.saveGameInfo({ id: selectedGame, description: byId('game-description').value }), 'Sinopse salva.'));
+  api.saveGameInfo({ id: selectedGame, description: byId('game-description').value }), t('Sinopse salva.')));
 byId('find-launchers').addEventListener('click', async event => {
   if (await perform(event.currentTarget, api.refresh)) {
     byId('app-search').value = '';
@@ -1253,7 +1274,7 @@ byId('feature-form').addEventListener('submit', async event => {
   event.preventDefault();
   const previous = state.featured;
   const settings = { gameId: byId('feature-game').value, title: byId('feature-title').value, art: draftArt };
-  if (await perform(byId('feature-save'), () => api.saveFeature(settings), 'Destaque salvo.')) {
+  if (await perform(byId('feature-save'), () => api.saveFeature(settings), t('Destaque salvo.'))) {
     const source = byId('feature-source').value;
     const autoplay = byId('feature-autoplay').checked;
     const edited = Object.keys(settings).some(key => settings[key] !== (previous?.[key] || ''));
@@ -1262,7 +1283,12 @@ byId('feature-form').addEventListener('submit', async event => {
     byId('feature-editor').close();
   }
 });
-decorateTvIcons();
-requestAnimationFrame(pollPad);
-render();
-perform(byId('refresh-games'), api.refresh);
+async function start() {
+  const locale = await api.getLocale?.().catch(() => undefined) || navigator.language;
+  localizeMarkup(locale);
+  decorateTvIcons();
+  requestAnimationFrame(pollPad);
+  render();
+  perform(byId('refresh-games'), api.refresh);
+}
+start();

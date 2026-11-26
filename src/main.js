@@ -13,6 +13,10 @@ const { romArtwork } = require('./rom-art');
 const { loginFlag, setTvLogin } = require('./tv-startup');
 const { version, updateRepository } = require('../package.json');
 
+const { languageFor, translator } = require('./i18n');
+const systemLocale = () => app.getPreferredSystemLanguages?.()[0] || app.getLocale?.() || 'pt-BR';
+const translate = message => translator(systemLocale())(message);
+
 const { createUpdater } = require('./app-update');
 const updater = createUpdater({ app, shell, version, repository: updateRepository });
 
@@ -122,7 +126,7 @@ function scan() {
       ]);
       await readExecutableIcons(apps);
       const missing = steam.map(game => game.appId).filter(id => !steamItems.has(id));
-      for (const item of await browseSteam(missing)) steamItems.set(String(item.appid), item);
+      for (const item of await browseSteam(missing, languageFor(systemLocale()))) steamItems.set(String(item.appid), item);
       const software = new Set([...data.steamPrograms, '1905180']);
       const oldSize = software.size;
       for (const game of steam) {
@@ -166,10 +170,10 @@ function state() {
       const download = storeDownload({ id, windowsUrl, linuxUrl, website });
       const fromSteam = steamAppId || (id === 'obs' && installedPrograms.some(item => item.appId === '1905180'));
       return {
-        id, name, category, description, icon, systems, userAdded, installed: Boolean(detected[id] || fromSteam),
+        id, name: userAdded ? name : translate(name), category, description: translate(description), icon, systems: translate(systems), userAdded, installed: Boolean(detected[id] || fromSteam),
         executableIcon: executableIcons.get(detected[id]?.file),
         custom: Boolean(data.apps[id]), available: Boolean(download), website: Boolean(website || download),
-        downloadSource: fromSteam && !detected[id] ? 'Steam' : download?.startsWith('https://flathub.org/') ? 'Flathub' : 'Site oficial'
+        downloadSource: fromSteam && !detected[id] ? 'Steam' : download?.startsWith('https://flathub.org/') ? 'Flathub' : translate('Site oficial')
       };
     })
   };
@@ -178,9 +182,9 @@ function state() {
 async function selectExecutable(window, title = 'Selecionar executável') {
   const options = {
     properties: ['openFile', 'dontAddToRecent'],
-    title
+    title: translate(title)
   };
-  if (platform === 'win32') options.filters = [{ name: 'Aplicativos do Windows', extensions: ['exe'] }];
+  if (platform === 'win32') options.filters = [{ name: translate('Aplicativos do Windows'), extensions: ['exe'] }];
   const selection = await dialog.showOpenDialog(window, options);
   if (selection.canceled) return null;
   const file = selection.filePaths[0];
@@ -227,7 +231,7 @@ function handle(channel, action) {
     try {
       return { ok: true, value: await action(argument, window) };
     } catch (error) {
-      return { ok: false, message: error.message || 'A operação falhou.' };
+      return { ok: false, message: translate(error.message || 'A operação falhou.') };
     }
   });
 }
@@ -241,6 +245,7 @@ handle('window:control', (action, window) => {
 });
 
 handle('catalog:refresh', async () => { await scan(); return state(); });
+handle('app:locale', systemLocale);
 handle('app:update-check', updater.check);
 handle('app:update-open', updater.open);
 handle('app:update-install', updater.install);
@@ -344,7 +349,8 @@ handle('game:play', async (id, window) => {
     if (!detected[game.emulator] || !await runnable(detected[game.emulator].file)) await scan();
     let target = detected[game.emulator];
     if (!target) {
-      const file = await selectExecutable(window, 'Selecionar o executável de ' + getStore(game.emulator).name);
+      const name = getStore(game.emulator).name;
+      const file = await selectExecutable(window, translator(systemLocale())('Selecionar o executável de {name}', { name }));
       if (!file) return state();
       await updateData(copy => { copy.apps[game.emulator] = file; });
       target = { file, args: [], custom: true };
@@ -393,9 +399,9 @@ handle('game:remove', async id => {
 handle('feature:store', () => shell.openExternal('https://store.steampowered.com/app/1091500/Cyberpunk_2077/'));
 async function pickImage(window, title, size, landscape = false) {
   const selection = await dialog.showOpenDialog(window, {
-    title,
+    title: translate(title),
     properties: ['openFile', 'dontAddToRecent'],
-    filters: [{ name: 'Imagens', extensions: ['jpg', 'jpeg', 'png'] }]
+    filters: [{ name: translate('Imagens'), extensions: ['jpg', 'jpeg', 'png'] }]
   });
   if (selection.canceled) return null;
   const file = selection.filePaths[0];
@@ -441,11 +447,12 @@ handle('game:lookup', async ({ id, query }) => {
   const game = getGame(id);
   const startingName = romAssets.get(id)?.name || game.name;
   const name = typeof query === 'string' ? query.trim().slice(0, 160) || startingName : startingName;
-  const info = await lookupGame({ ...game, name }, steamItems.get(game.appId));
+  const language = languageFor(systemLocale());
+  const info = await lookupGame({ ...game, name }, steamItems.get(game.appId), language);
   if (!info) throw new Error('Não encontrei uma correspondência segura. Você pode preencher a sinopse manualmente.');
   await updateData(copy => {
     const previous = copy.gameDetails[id];
-    copy.gameDetails[id] = { ...info, customDescription: previous?.customDescription };
+    copy.gameDetails[id] = { ...info, language, customDescription: previous?.customDescription };
   });
   return state();
 });
@@ -466,7 +473,7 @@ handle('game:save-info', async ({ id, description }) => {
 handle('game:info-source', async id => {
   getGame(id);
   const url = data.gameDetails[id]?.url;
-  if (/^https:\/\/(?:store\.steampowered\.com\/app\/\d+\/|pt\.wikipedia\.org\/\?curid=\d+)$/.test(url)) {
+  if (/^https:\/\/(?:store\.steampowered\.com\/app\/\d+\/|(?:pt|en)\.wikipedia\.org\/\?curid=\d+)$/.test(url)) {
     await shell.openExternal(url);
   }
 });
@@ -476,10 +483,10 @@ handle('rom:add', async ({ emulator, folder }, window) => {
   const android = emulator === 'android';
   if (android && platform !== 'win32') throw new Error('Atalhos de jogos Android estão disponíveis no Windows.');
   const selection = await dialog.showOpenDialog(window, {
-    title: android ? (folder ? 'Selecionar pasta com atalhos Android' : 'Selecionar atalhos dos jogos Android') :
-      (folder ? 'Selecionar pasta de ROMs' : 'Selecionar arquivos de jogos'),
+    title: translate(android ? (folder ? 'Selecionar pasta com atalhos Android' : 'Selecionar atalhos dos jogos Android') :
+      (folder ? 'Selecionar pasta de ROMs' : 'Selecionar arquivos de jogos')),
     properties: folder ? ['openDirectory', 'dontAddToRecent'] : ['openFile', 'multiSelections', 'dontAddToRecent'],
-    ...(folder ? {} : { filters: [{ name: android ? 'Atalhos do Windows' : 'Jogos compatíveis', extensions }] })
+    ...(folder ? {} : { filters: [{ name: translate(android ? 'Atalhos do Windows' : 'Jogos compatíveis'), extensions }] })
   });
   if (selection.canceled) return undefined;
   let candidates = selection.filePaths;
@@ -497,9 +504,9 @@ handle('rom:add', async ({ emulator, folder }, window) => {
   if (emulator === 'retroarch') {
     const extension = platform === 'win32' ? 'dll' : 'so';
     const choice = await dialog.showOpenDialog(window, {
-      title: 'Selecionar núcleo instalado do RetroArch',
+      title: translate('Selecionar núcleo instalado do RetroArch'),
       properties: ['openFile', 'dontAddToRecent'],
-      filters: [{ name: 'Núcleo do RetroArch', extensions: [extension] }]
+      filters: [{ name: translate('Núcleo do RetroArch'), extensions: [extension] }]
     });
     if (choice.canceled) return undefined;
     core = choice.filePaths[0];

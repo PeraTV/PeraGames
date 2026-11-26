@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('pera', {
   setTvLayout: layout => invoke('tv:layout', layout),
   setDolphinPassthrough: enabled => invoke('dolphin:passthrough', enabled),
   onMaximized: callback => ipcRenderer.on('maximized', (_, value) => callback(value)),
+  getLocale: () => invoke('app:locale'),
   refresh: () => invoke('catalog:refresh'),
   checkAppUpdate: () => invoke('app:update-check'),
   openAppRelease: () => invoke('app:update-open'),

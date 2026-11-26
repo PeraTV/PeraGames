@@ -16,6 +16,8 @@ Choose the installer for your system on the releases page. After installation, u
 | Linux x64 or ARM64 | With Flatpak installed, open the .flatpak bundle for your architecture. Flathub provides the runtime. | The app downloads the new bundle and asks Flatpak to install it. |
 | macOS Intel or Apple Silicon | Open the universal .dmg and drag PeraGames to Applications. | In-app installation is available for releases signed for distribution. |
 
+The interface follows your system language. PeraGames opens in Portuguese on Portuguese systems and in English on other systems.
+
 ## Library and customization
 
 | | |

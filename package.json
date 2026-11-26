@@ -1,12 +1,12 @@
 {
   "name": "peragames",
   "productName": "PeraGames",
-  "version": "0.16.0",
+  "version": "0.17.0",
   "author": "PeraTV",
   "repository": "github:PeraTV/PeraGames",
   "updateRepository": "PeraTV/PeraGames",
   "private": true,
-  "description": "Launcher de jogos para Windows e Linux",
+  "description": "Launcher de jogos para Windows, Linux e macOS",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
@@ -31,7 +31,7 @@
     },
     "nsis": { "oneClick": false, "perMachine": false, "allowToChangeInstallationDirectory": true },
     "mac": {
-      "icon": "src/assets/pera-mark.png",
+      "icon": "src/assets/pera-mark-512.png",
       "category": "public.app-category.games",
       "target": ["dmg", "zip"],
       "artifactName": "PeraGames-macOS-${arch}.${ext}",
