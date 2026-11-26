@@ -79,6 +79,7 @@ jobs:
       - name: Gerar DMG universal
         run: |
           if [[ -z "$CSC_LINK" ]]; then
+            unset CSC_LINK CSC_KEY_PASSWORD
             export CSC_IDENTITY_AUTO_DISCOVERY=false
             npx electron-builder --mac dmg --universal --publish never
             rm -f dist/release/latest-mac.yml
@@ -115,7 +116,9 @@ jobs:
           tag="v$(node -p 'require("./package.json").version')"
           if gh release view "$tag" >/dev/null 2>&1; then
             for file in release-files/*; do
-              gh release upload "$tag" "$file" || echo "O arquivo pode já estar publicado: $file"
+              if ! gh release view "$tag" --json assets --jq '.assets[].name' | grep -Fxq "$(basename "$file")"; then
+                gh release upload "$tag" "$file"
+              fi
             done
           else
             gh release create "$tag" release-files/* --target "$GITHUB_SHA" --title "PeraGames $tag" --generate-notes
