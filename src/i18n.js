@@ -359,7 +359,14 @@ O instalador do Windows não terminou normalmente.|The Windows installer did not
 Escolha o executável que deve abrir o jogo.|Choose the executable that should launch the game.
 O programa {name} está ativado neste jogo, mas não foi encontrado.|{name} is enabled for this game but could not be found.
 Editar inicialização|Edit launch settings
-Este jogo tem configurações gerenciadas pela sua biblioteca de origem.|This game is managed by its original library.`.split('\n').map(line => line.split('|')));
+Este jogo tem configurações gerenciadas pela sua biblioteca de origem.|This game is managed by its original library.
+Estado da instalação|Installation status
+Contas de jogos|Game accounts
+Escolha uma loja para conectar ou sincronizar sua biblioteca.|Choose a store to link your account or sync your library.
+Não instalados|Not installed
+Instalando…|Installing…
+Sincronizar|Sync
+Conectar|Connect`.split('\n').map(line => line.split('|')));
 
   function languageFor(locale) {
     return /^pt(?:[-_]|$)/i.test(locale || 'pt-BR') ? 'pt-BR' : 'en';

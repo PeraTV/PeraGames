@@ -47,6 +47,7 @@ Use the x64 bundle if `uname -m` prints `x86_64`. If it prints `aarch64`, use `P
 - In **Library → Add game**, select Windows or Linux, enter a name, and choose the executable. For Windows, you can also select Wine or Proton and choose an existing or empty prefix. **Run installer first** runs the installer in that prefix. When it finishes, select the installed executable and save it to your library. Launch arguments, MangoHud, and GameMode can be configured for local games. MangoHud and GameMode use commands installed on the host.
 - Under **Stores**, **Install on Linux** installs Flathub applications through the system Flatpak. For other providers, PeraGames opens the installation page and offers **Copy link**.
 - To change the executable or launch options for an existing local game, open its details and choose **Edit launch settings**.
+- Open **Library → Game accounts** to connect or sync Epic Games and GOG. Titles awaiting installation appear with grayscale covers and an **Install game** button. Use **All games**, **Installed**, or **Not installed** to filter the library.
 
 ## Library and customization
 

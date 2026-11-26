@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: https://*.steamstatic.com https://upload.wikimedia.org https://commons.wikimedia.org https://art.gametdb.com https://thumbnails.libretro.com https://m.media-amazon.com https://cdn.simpleicons.org https://www.google.com https://*.gstatic.com https://raw.githubusercontent.com https://dl.flathub.org https://asset.msi.com https://gitlab.com https://playnite.link; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: https://*.steamstatic.com https://upload.wikimedia.org https://commons.wikimedia.org https://art.gametdb.com https://thumbnails.libretro.com https://m.media-amazon.com https://cdn.simpleicons.org https://www.google.com https://*.gstatic.com https://raw.githubusercontent.com https://dl.flathub.org https://asset.msi.com https://gitlab.com https://playnite.link https://*.epicgames.com https://*.unrealengine.com https://*.gog-statics.com; base-uri 'none'; form-action 'none'">
   <title>PeraGames</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="theater.css">
@@ -73,6 +73,12 @@
       <div class="section-head library-tools">
         <h1 id="library-title">Biblioteca de PC</h1>
         <label class="favorite-filter"><input type="checkbox" id="favorites-only"> Favoritos</label>
+        <select id="library-install-filter" aria-label="Estado da instalação" hidden>
+          <option value="all">Todos os jogos</option>
+          <option value="installed">Instalados</option>
+          <option value="uninstalled">Não instalados</option>
+        </select>
+        <button class="button" id="game-accounts" hidden>Contas de jogos</button>
         <button class="button" id="refresh-games">Atualizar</button>
         <button class="button primary" id="add-game">+ Adicionar jogo</button>
       </div>
@@ -379,6 +385,14 @@
         <button type="submit" class="button primary" id="game-setup-save" disabled>Salvar na biblioteca</button>
       </div>
     </form>
+  </dialog>
+  <dialog id="game-accounts-dialog" aria-labelledby="game-accounts-title">
+    <div class="section-head">
+      <h2 id="game-accounts-title">Contas de jogos</h2>
+      <button type="button" id="game-accounts-close" class="button" aria-label="Fechar">×</button>
+    </div>
+    <p>Escolha uma loja para conectar ou sincronizar sua biblioteca.</p>
+    <div id="game-account-options" class="actions"></div>
   </dialog>
   <dialog id="linux-store-dialog" aria-labelledby="linux-store-title">
     <div class="section-head">

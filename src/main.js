@@ -30,7 +30,7 @@ const runnable = async file => await fileExists(file) || (platform === 'darwin' 
 const emptyData = () => ({
   games: [], roms: [], apps: {}, favorites: [], played: {}, featured: null, customStores: [],
   gameCovers: {}, gameBackdrops: {}, gameDetails: {}, steamPrograms: [],
-  gameProton: {}, protonFolders: [],
+  gameProton: {}, protonFolders: [], ownedStoreGames: {},
   tv: { openOnLaunch: false, atLogin: false, layout: 'cinema', layoutRevision: 1 },
   dolphinPassthrough: false
 });
@@ -44,7 +44,6 @@ const romAssets = new Map();
 const executableIcons = new Map();
 let pendingWrite = Promise.resolve();
 let pendingScan;
-const storeCatalogs = new Map();
 const storeOperations = new Set();
 const gameSetups = new WeakMap();
 
@@ -152,7 +151,7 @@ function scan() {
 }
 
 function state() {
-  const gameState = ({ id, appId, name, source, emulator, store }) => {
+  const gameState = ({ id, appId, name, source, emulator, store, storeId }) => {
     const online = data.gameDetails[id];
     const steam = steamAssets(steamItems.get(appId));
     const rom = romAssets.get(id);
@@ -163,13 +162,15 @@ function state() {
       artwork: [...(rom?.art || []), rom && online?.cover, ...featuredSteamArt(appId), steam.cover, online?.coverFallback].filter(Boolean),
       screens: rom?.screens,
       favorite: data.favorites.includes(id), lastPlayed: data.played[id] || 0,
-      customCover: Boolean(data.gameCovers[id]), cover: data.gameCovers[id] || (!rom && online?.cover) || steam.cover,
+      customCover: Boolean(data.gameCovers[id]), cover: data.gameCovers[id] || (!rom && online?.cover) || steam.cover ||
+        (store && data.ownedStoreGames[store]?.find(game => game.id === storeId)?.cover),
       hero: online?.hero || steam.hero, steamHero: steam.hero, customBackdrop: data.gameBackdrops[id], info: online
     };
   };
   return {
     platform,
     games: [...data.games, ...installedGames].map(gameState),
+    ownedStoreGames: platform === 'linux' ? data.ownedStoreGames : {},
     roms: data.roms.map(gameState),
     featured: data.featured,
     tv: { ...data.tv, loginLaunch: process.argv.includes(loginFlag) ||
@@ -309,20 +310,26 @@ handle('store:copy-link', id => {
 });
 const linuxStore = provider => linuxStores.storeConfig(provider, app.getPath('userData'));
 async function refreshLinuxLibrary(provider, config) {
-  const games = await linuxStores.library(provider, config);
-  const installed = new Set(data.games.filter(game => game.store === provider).map(game => game.storeId));
+  const games = await linuxStores.library(provider, config, data.ownedStoreGames[provider]);
+  const localGames = data.games.filter(game => game.store === provider);
+  const installed = new Set((await Promise.all(localGames.map(async game => {
+    if (provider !== 'gog') return game.storeId;
+    return game.installFolder && await fileExists(path.join(game.installFolder, 'goggame-' + game.storeId + '.info')) ? game.storeId : null;
+  }))).filter(Boolean));
   const entries = games.map(game => ({
     ...game, installed: Boolean(game.installed || (provider === 'gog' && installed.has(game.id)))
   })).sort((a, b) => a.name.localeCompare(b.name));
-  storeCatalogs.set(provider, new Map(entries.map(game => [game.id, game])));
-  if (provider === 'epic') {
-    const added = entries.filter(game => game.installed && !installed.has(game.id));
-    if (added.length) await updateData(copy => {
+  const installedByStore = new Set(entries.filter(game => game.installed).map(game => game.id));
+  await updateData(copy => {
+    copy.ownedStoreGames[provider] = entries;
+    copy.games = copy.games.filter(game => game.store !== provider || installedByStore.has(game.storeId));
+    if (provider === 'epic') {
+      const added = entries.filter(game => game.installed && !installed.has(game.id));
       copy.games.push(...added.map(game => ({
         id: 'epic-' + game.id, name: game.name, source: 'Epic Games', store: provider, storeId: game.id
       })));
-    });
-  }
+    }
+  });
   return entries;
 }
 
@@ -344,7 +351,7 @@ handle('linux-store:connect', ({ provider, code }) => withStore(provider, async 
   return refreshLinuxLibrary(provider, config);
 }));
 handle('linux-store:install', async ({ provider, id }, window) => withStore(provider, async config => {
-  const entry = storeCatalogs.get(provider)?.get(id);
+  const entry = data.ownedStoreGames[provider]?.find(game => game.id === id);
   if (!config.ready || !entry || !linuxStores.storeGameId(provider, id)) throw new Error('Atualize a biblioteca da loja e selecione um jogo.');
   const previous = data.games.find(game => game.store === provider && game.storeId === id);
   let folder = previous?.installBase;

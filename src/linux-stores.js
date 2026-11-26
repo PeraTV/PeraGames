@@ -16,6 +16,12 @@ const providers = {
 };
 const storeError = 'A loja não respondeu. Confira o login e tente novamente.';
 
+function storeCover(value) {
+  if (typeof value !== 'string') return undefined;
+  const url = value.startsWith('//') ? 'https:' + value : value;
+  return /^https:\/\/[a-z0-9.-]+\.(?:epicgames\.com|unrealengine\.com|gog-statics\.com)\//i.test(url) ? url : undefined;
+}
+
 function storeGameId(provider, id) {
   return typeof id === 'string' && (provider === 'gog' ? /^\d{1,20}$/ : /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,99}$/).test(id);
 }
@@ -62,7 +68,7 @@ async function gogCredentials(config, code) {
   return token;
 }
 
-async function gogLibrary(config) {
+async function gogLibrary(config, cached = []) {
   const token = await gogCredentials(config);
   const headers = { Authorization: 'Bearer ' + token.access_token };
   const products = new Map();
@@ -83,28 +89,35 @@ async function gogLibrary(config) {
     if (page) seen.add(page);
   } while (page);
   const games = [];
+  const cachedById = new Map(cached.map(entry => [entry.id, entry]));
   const entries = [...products];
   for (let offset = 0; offset < entries.length; offset += 12) {
     const batch = await Promise.all(entries.slice(offset, offset + 12).map(async ([id, name]) => {
-      if (!name) {
-        const info = await fetch('https://api.gog.com/products/' + id, { signal: AbortSignal.timeout(6000) })
-          .then(result => result.ok ? result.json() : null).catch(() => null);
-        name = info?.title;
-      }
-      return { id, name: typeof name === 'string' ? name : 'GOG ' + id };
+      const previous = cachedById.get(id);
+      if (previous?.cover) return { id, name: previous.name, cover: previous.cover };
+      const info = await fetch('https://api.gog.com/products/' + id, { signal: AbortSignal.timeout(6000) })
+        .then(result => result.ok ? result.json() : null).catch(() => null);
+      return {
+        id, name: info?.title || (typeof name === 'string' ? name : 'GOG ' + id),
+        cover: storeCover(info?.images?.boxArtImage || info?.images?.logo)
+      };
     }));
     games.push(...batch);
   }
   return games;
 }
 
-async function library(provider, config) {
-  if (provider === 'gog') return gogLibrary(config);
+async function library(provider, config, cached) {
+  if (provider === 'gog') return gogLibrary(config, cached);
   const owned = await command(config, ['list', '--json']);
   const installed = await command(config, ['list-installed', '--json']);
   const installedIds = new Set(installed.map(game => game.app_name));
-  return owned.filter(game => storeGameId(provider, game.app_name) && typeof game.app_title === 'string')
-    .map(game => ({ id: game.app_name, name: game.app_title, installed: installedIds.has(game.app_name) }));
+  return owned.filter(game => storeGameId(provider, game.app_name) && typeof game.app_title === 'string').map(game => {
+    const images = game.metadata?.keyImages;
+    const cover = Array.isArray(images) && ['DieselGameBoxTall', 'OfferImageTall', 'DieselGameBox', 'Thumbnail']
+      .map(type => images.find(image => image.type === type)?.url).map(storeCover).find(Boolean);
+    return { id: game.app_name, name: game.app_title, installed: installedIds.has(game.app_name), cover: cover || undefined };
+  });
 }
 
 async function connect(provider, config, input) {

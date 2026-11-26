@@ -273,10 +273,37 @@ function gameCard(game) {
   return card;
 }
 
-function fillGames(id, games, filtered) {
+function storeLibraryCard(game) {
+  const card = el('article', 'game-card unavailable-game');
+  const art = el('div', 'game-art');
+  art.append(el('span', 'game-placeholder', game.name));
+  if (game.cover) {
+    const image = el('img');
+    image.loading = 'lazy';
+    image.alt = '';
+    setArt(image, [game.cover]);
+    art.append(image);
+  }
+  const info = el('div', 'game-info');
+  info.append(el('h3', '', game.name),
+    el('p', '', (game.provider === 'gog' ? 'GOG' : 'Epic Games') + ' · ' + t('Não instalado')));
+  const install = button(t('Instalar jogo'), async node => {
+    node.textContent = t('Instalando…');
+    await perform(node, async () => {
+      const games = await api.installLinuxStoreGame({ provider: game.provider, id: game.id });
+      if (games) return api.refresh();
+    });
+    if (node.isConnected) node.textContent = t('Instalar jogo');
+  }, 'button primary');
+  info.append(install);
+  card.append(art, info);
+  return card;
+}
+
+function fillGames(id, games, filtered, storeGames = []) {
   const grid = byId(id);
-  grid.replaceChildren(...games.map(gameCard));
-  if (games.length) return;
+  grid.replaceChildren(...games.map(gameCard), ...storeGames.map(storeLibraryCard));
+  if (games.length || storeGames.length) return;
   const romLibrary = id === 'rom-game-cards';
   const message = !loaded ? t('Carregando biblioteca…') : filtered ? t('Nenhum jogo encontrado.') :
     romLibrary ? t('Escolha o emulador e adicione arquivos de jogos ou importe uma pasta.') :
@@ -762,6 +789,8 @@ function renderCatalog() {
 
 function render() {
   clearInterval(homeRotation);
+  byId('game-accounts').hidden = state.platform !== 'linux';
+  byId('library-install-filter').hidden = state.platform !== 'linux';
   if (theater) {
     renderTheater();
     return;
@@ -793,7 +822,13 @@ function render() {
     renderHero();
     fillGames('quick-games', games.slice(0, query.trim() ? games.length : 5), Boolean(query.trim()));
   } else {
-    fillGames('all-game-cards', games, Boolean(query.trim() || onlyFavorites));
+    const installFilter = byId('library-install-filter').value;
+    const uninstalled = !onlyFavorites && installFilter !== 'installed'
+      ? Object.entries(state.ownedStoreGames || {}).flatMap(([provider, entries]) =>
+        entries.filter(entry => !entry.installed && matches(entry.name, query)).map(entry => ({ ...entry, provider })))
+      : [];
+    const libraryGames = installFilter === 'uninstalled' ? [] : games;
+    fillGames('all-game-cards', libraryGames, Boolean(query.trim() || onlyFavorites || installFilter !== 'all'), uninstalled);
   }
 }
 
@@ -1287,6 +1322,20 @@ byId('search').addEventListener('input', render);
 byId('app-search').addEventListener('input', renderCatalog);
 byId('favorites-only').addEventListener('change', render);
 byId('add-game').addEventListener('click', event => addGameFromLibrary(event.currentTarget));
+byId('library-install-filter').addEventListener('change', render);
+byId('game-accounts').addEventListener('click', () => {
+  const dialog = byId('game-accounts-dialog');
+  const options = state.stores.filter(store => ['epic', 'gog'].includes(store.id)).map(store => {
+    const connected = Object.hasOwn(state.ownedStoreGames || {}, store.id);
+    return button(store.name + ' · ' + t(connected ? 'Sincronizar' : 'Conectar'), () => {
+      dialog.close();
+      openLinuxStoreLibrary(store);
+    });
+  });
+  byId('game-account-options').replaceChildren(...options);
+  dialog.showModal();
+});
+byId('game-accounts-close').addEventListener('click', () => byId('game-accounts-dialog').close());
 byId('game-setup-close').addEventListener('click', () => byId('game-setup-dialog').close());
 byId('game-setup-edit').addEventListener('click', () => {
   byId('game-editor').close();

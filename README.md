@@ -47,6 +47,7 @@ Use o pacote x64 se `uname -m` mostrar `x86_64`. Se mostrar `aarch64`, troque o 
 - Em **Biblioteca → Adicionar jogo**, selecione Windows ou Linux, informe o nome e escolha o executável. Para Windows, você também pode escolher Wine ou Proton e indicar um prefixo existente ou vazio. Use **Rodar instalador primeiro** para rodar o `.exe` de instalação nesse prefixo. Quando terminar, escolha o executável instalado e salve na biblioteca. Argumentos, MangoHud e GameMode podem ser definidos para cada jogo local. MangoHud e GameMode usam os comandos instalados no sistema.
 - Em **Lojas**, o botão **Instalar no Linux** instala os aplicativos do Flathub pelo Flatpak do sistema. Quando o aplicativo usa outro distribuidor, o PeraGames abre a página de instalação e oferece **Copiar link**.
 - Para alterar o executável ou as opções de execução de um jogo local que já está na biblioteca, use **Editar inicialização** na ficha do jogo.
+- Em **Biblioteca → Contas de jogos**, conecte ou sincronize a Epic Games e a GOG. Os jogos da conta aguardando instalação aparecem com capas cinzas e botão **Instalar jogo**. Use **Todos os jogos**, **Instalados** ou **Não instalados** para filtrar a biblioteca.
 
 ## Biblioteca e personalização
 

@@ -388,6 +388,9 @@ body[data-palette]:not([data-palette="amber"]) :focus-visible { outline-color: v
 .hero.rotating .hero-cover.panoramic { max-width: 100%; }
 .game-card:not([data-system]) { aspect-ratio: 2 / 3; }
 .game-card:not([data-system]) .game-art img { object-fit: contain; object-position: center; background: #201219; }
+.unavailable-game .game-art { filter: grayscale(1) brightness(.8); }
+.unavailable-game .game-info { opacity: 1; transform: none; }
+.unavailable-game .game-info .button { margin-top: 4px; }
 .game-card:not([data-system]) .game-art:has(img:not([hidden])) .game-placeholder { visibility: hidden; }
 .game-art img[hidden][src] { display: block !important; visibility: hidden; }
 .hero.rotating:has(.hero-poster:not([hidden])):not(:has(.hero-cover:not([hidden]))) .hero-copy { max-width: 63%; }
