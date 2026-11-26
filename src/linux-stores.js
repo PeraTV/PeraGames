@@ -240,6 +240,8 @@ function storeLaunchMonitor(onStatus, { direct = false, wrapped = false } = {}) 
       if (line === 'PERAGAMES_RUNNER_START') {
         started = Date.now();
         onStatus('runner-start');
+      } else if (wrapped && !started && /^Launch command:/.test(line) && !line.includes('PERAGAMES_RUNNER_START')) {
+        started = Date.now();
       } else if (/^PERAGAMES_RUNNER_EXIT=\d+$/.test(line)) {
         if (reason || !line.endsWith('=0')) report('runner');
         else if (early()) report('early-exit');
@@ -299,8 +301,16 @@ async function play(provider, config, { id, folder, umu, environment, onStatus }
     const result = await playEpicOnLinux(config, id, umu, environment, onStatus);
     if (result !== null) return result;
   }
-  const args = provider === 'gog' ? ['launch', folder, id, '--platform', process.platform === 'darwin' ? 'osx' : 'windows'] : ['launch', id];
-  const monitored = onStatus && ['epic', 'amazon'].includes(provider);
+  let args = ['launch', id];
+  if (provider === 'gog') {
+    const gameDir = folder && await gogGameFolder(folder, id);
+    if (!gameDir) {
+      onStatus?.('missing');
+      return false;
+    }
+    args = ['launch', gameDir, id, '--platform', process.platform === 'darwin' ? 'osx' : 'windows'];
+  }
+  const monitored = onStatus && Object.hasOwn(providers, provider);
   const command = monitored && umu ? ['/bin/sh', '-c', runnerScript, 'peragames-runner', umu] : [umu];
   const wrapper = umu ? ['--no-wine', '--wrapper', command.map(quoteWrapper).join(' ')] : [];
   await launch(config.tool, [...config.baseArgs, ...args, ...wrapper], {

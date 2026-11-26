@@ -92,6 +92,36 @@ test('usa o umu preparado pelo PeraGames para abrir o jogo com o Proton selecion
   assert.deepEqual(runner.environment, { PROTONPATH: 'GE-Proton', WINEPREFIX: root });
 });
 
+test('encontra a pasta real do jogo GOG e monitora a abertura pelo gogdl', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'peragames-gog-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const folder = path.join(root, 'Game');
+  await mkdir(folder);
+  await writeFile(path.join(folder, 'goggame-123.info'), '{}');
+  const moduleFile = require.resolve('../src/linux-stores');
+  const requireStore = createRequire(moduleFile);
+  const moduleExports = {};
+  let monitor;
+  vm.runInNewContext(readFileSync(moduleFile, 'utf8'), {
+    require: name => name === './system' ? { ...requireStore(name), launch: async (tool, args, options) => {
+      assert.equal(tool, 'gogdl');
+      assert.deepEqual(Array.from(args.slice(0, 8)), ['--auth-config-path', 'auth.json', 'launch', folder,
+        '123', '--platform', 'windows', '--no-wine']);
+      assert.match(args[9], /PERAGAMES_RUNNER_START/);
+      monitor = options;
+    } } : requireStore(name),
+    process: { platform: 'linux' }, module: moduleExports
+  });
+  const notices = [];
+  const config = { tool: 'gogdl', baseArgs: ['--auth-config-path', 'auth.json'] };
+  const settings = { id: '123', folder: root, umu: '/tools/umu-run', onStatus: value => notices.push(value) };
+  assert.equal(await moduleExports.exports.play('gog', config, settings), true);
+  monitor.onLine('PERAGAMES_RUNNER_START');
+  monitor.onLine('PERAGAMES_RUNNER_EXIT=1');
+  assert.equal(await moduleExports.exports.play('gog', config, { ...settings, id: '456' }), false);
+  assert.deepEqual(notices, ['runner-start', 'runner', 'missing']);
+});
+
 test('seleciona os componentes oficiais da loja por sistema e arquitetura', () => {
   assert.equal(releaseAsset('epic', 'win32', 'x64').asset, 'legendary_windows_x64.exe');
   assert.equal(releaseAsset('gog', 'darwin', 'x64').asset, 'gogdl_macos_x86_64');

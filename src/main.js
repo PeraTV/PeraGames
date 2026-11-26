@@ -1000,7 +1000,7 @@ async function playGame(id, window) {
   const storeStatus = reason => {
     if (!window.isDestroyed()) window.webContents.send('game:store-status', { name: game.name, provider: game.store, reason });
   };
-  if (game.store === 'epic' || game.store === 'amazon') {
+  if (game.store) {
     storeStatus(platform === 'linux' && !compatibility.proton?.startsWith('wine') ? 'preparing-proton' : 'preparing');
   }
   if (game.emulator === 'android') {
