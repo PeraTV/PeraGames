@@ -433,7 +433,7 @@
   box-shadow: 0 0 0 2px var(--tv-accent), 0 0 32px color-mix(in srgb, var(--tv-accent), transparent 43%), 0 18px 28px #0e050bda;
   transform: perspective(1000px) rotateY(var(--tilt, 0deg)) translateY(-3px);
 }
-#theater[data-layout="gallery"] .tv-card-cover { inset: 0; width: 100%; height: 100%; object-position: center; }
+#theater[data-layout="gallery"] .tv-card-cover { inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center; }
 #theater[data-layout="gallery"] .tv-card-ambient { display: none; }
 #theater[data-layout="gallery"] .tv-card:has(.tv-card-cover:not(.landscape):not([hidden])) span { visibility: hidden; }
 #theater[data-layout="gallery"] .tv-card::after { display: none; }
@@ -484,10 +484,23 @@
 @media (max-width: 1150px) {
   #theater .tv-navigation button { padding-inline: 6px; }
 }
-@media (max-width: 1100px) {
-  #theater[data-layout="cockpit"] { --tv-header: 94px; }
-  #theater[data-layout="cockpit"] .theater-top { align-items: start; padding-top: 6px; }
-  #theater[data-layout="cockpit"] .tv-navigation { align-self: end; margin: 0 11px 5px; }
+@media (max-width: 1760px) {
+  #theater:is([data-layout="cockpit"], [data-layout="gallery"]) {
+    grid-template-rows: minmax(46px, max-content) minmax(44px, max-content) minmax(0, 1fr) var(--tv-footer);
+  }
+  #theater:is([data-layout="cockpit"], [data-layout="gallery"]) .theater-top {
+    align-items: center;
+    padding-block: 0;
+  }
+  #theater:is([data-layout="cockpit"], [data-layout="gallery"]) .tv-navigation {
+    grid-row: 2;
+    align-self: center;
+    justify-self: center;
+    max-width: 100%;
+    margin: 4px 0;
+  }
+  #theater:is([data-layout="cockpit"], [data-layout="gallery"]) .theater-core { grid-row: 3; }
+  #theater:is([data-layout="cockpit"], [data-layout="gallery"]) .theater-foot { grid-row: 4; }
 }
 
 body[data-palette]:not([data-palette="amber"]) #theater {

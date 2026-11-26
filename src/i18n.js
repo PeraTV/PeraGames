@@ -271,7 +271,49 @@ Atalhos do Windows|Windows shortcuts
 Jogos compatíveis|Compatible games
 A operação falhou.|The operation failed.
 Jogos|Games
-Wikipédia|Wikipedia`.split('\n').map(line => line.split('|')));
+Wikipédia|Wikipedia
+Compatibilidade com Proton|Proton compatibility
+Versão do Proton|Proton version
+Adicionar Proton|Add Proton
+Verificar GE-Proton|Check for GE-Proton releases
+Instalar umu-launcher|Install umu-launcher
+Usar prefixo Wine existente|Use an existing Wine prefix
+Voltar ao prefixo padrão|Use the default prefix
+GE-Proton mais recente (automático)|Latest GE-Proton (automatic)
+O modo automático baixa e atualiza o GE-Proton ao iniciar o jogo.|Automatic mode downloads and updates GE-Proton when launching the game.
+Instale o umu-launcher no Linux para iniciar jogos com Proton.|Install umu-launcher on Linux to launch games with Proton.
+Instale o umu-launcher para iniciar este jogo com Proton.|Install umu-launcher to launch this game with Proton.
+GE-Proton disponível: {version}|Available GE-Proton release: {version}
+Prefixo Wine: {folder}|Wine prefix: {folder}
+Prefixo separado para este jogo|Separate prefix for this game
+Não foi possível verificar o GE-Proton.|Could not check the latest GE-Proton release.
+Não foi possível abrir o navegador do sistema. Verifique o navegador padrão.|Could not open the system browser. Check the default browser.
+O Proton está disponível para jogos locais do Windows no Linux.|Proton is available for local Windows games on Linux.
+Selecionar pasta do Proton|Select the Proton folder
+Escolha a pasta que contém o arquivo proton.|Choose the folder containing the proton executable.
+A versão selecionada do Proton não foi encontrada.|The selected Proton version could not be found.
+Selecionar prefixo Wine existente|Select an existing Wine prefix
+Escolha a pasta do prefixo Wine que contém system.reg.|Choose the Wine prefix folder that contains system.reg.
+O prefixo Wine selecionado não foi encontrado.|The selected Wine prefix could not be found.
+Biblioteca da loja|Store library
+Instalar componente da loja|Install store component
+Abrir login no navegador|Sign in in your browser
+Sincronizar jogos da conta|Sync account library
+Código ou URL de retorno do login|Login code or callback URL
+Vincular conta|Link account
+Instale {tool} no Linux e abra esta janela novamente.|Install {tool} on Linux and open this window again.
+Loja indisponível neste sistema.|This store is unavailable on your system.
+Instale o componente da loja para continuar.|Install the store component to continue.
+Código de login inválido.|Invalid login code.
+A loja não respondeu. Confira o login e tente novamente.|The store did not respond. Check your login and try again.
+Aguarde a operação atual desta loja.|Wait for the store operation to finish.
+Atualize a biblioteca da loja e selecione um jogo.|Refresh the store library and select a game.
+Selecionar pasta de instalação|Choose the installation folder
+Não foi possível instalar ou atualizar o jogo pela loja.|Could not install or update the game through the store.
+Instalar jogo|Install game
+Atualizar jogo|Update game
+Instalando ou atualizando o jogo…|Installing or updating the game…
+Cole o retorno que apareceu após entrar na conta.|Paste the response displayed after signing in.`.split('\n').map(line => line.split('|')));
 
   function languageFor(locale) {
     return /^pt(?:[-_]|$)/i.test(locale || 'pt-BR') ? 'pt-BR' : 'en';

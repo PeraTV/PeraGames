@@ -336,6 +336,60 @@ function renderGameDetails() {
   source.textContent = t(info.source || '') + ' ↗';
   byId('game-query').disabled = Boolean(game.appId);
   byId('game-query-label').hidden = Boolean(game.appId);
+  byId('game-proton').hidden = !game.canUseProton;
+}
+
+function showProtonSettings(settings) {
+  const select = byId('proton-version');
+  const value = settings.proton || 'GE-Proton';
+  const options = settings.versions.map(({ name, path }) => new Option(name, path));
+  if (value !== 'GE-Proton' && !options.some(option => option.value === value)) {
+    options.push(new Option(t('A versão selecionada do Proton não foi encontrada.'), value));
+  }
+  select.replaceChildren(new Option(t('GE-Proton mais recente (automático)'), 'GE-Proton'), ...options);
+  select.value = value;
+  byId('proton-note').textContent = settings.umu
+    ? t('O modo automático baixa e atualiza o GE-Proton ao iniciar o jogo.')
+    : t('Instale o umu-launcher no Linux para iniciar jogos com Proton.');
+  byId('proton-help').hidden = settings.umu;
+  byId('proton-prefix-text').textContent = settings.prefix
+    ? t('Prefixo Wine: {folder}', { folder: settings.prefix }) : t('Prefixo separado para este jogo');
+  byId('proton-prefix-reset').hidden = !settings.prefix;
+}
+
+let pendingProton;
+let latestProtonRelease;
+async function listLatestProton(id, refresh = false) {
+  const release = byId('proton-release');
+  try {
+    if (!latestProtonRelease || refresh) latestProtonRelease = await api.protonLatest(id);
+    if (selectedGame === id) release.textContent = t('GE-Proton disponível: {version}', { version: latestProtonRelease });
+  } catch (error) {
+    if (refresh && selectedGame === id) release.textContent = t(error.message);
+  }
+}
+
+async function changeProton(action) {
+  if (pendingProton || !selectedGame) return;
+  const id = selectedGame;
+  const panel = byId('game-proton');
+  const status = byId('proton-status');
+  const controls = [...panel.querySelectorAll('button, select')];
+  controls.forEach(control => { control.disabled = true; });
+  status.textContent = t('Consultando…');
+  pendingProton = true;
+  try {
+    const result = await action(id);
+    if (selectedGame !== id) return;
+    status.textContent = '';
+    if (result?.versions) showProtonSettings(result);
+  } catch (error) {
+    if (selectedGame === id) status.textContent = t(error.message);
+  } finally {
+    pendingProton = false;
+    controls.forEach(control => { control.disabled = false; });
+    if (selectedGame !== id && panel.open && !panel.hidden) changeProton(api.protonSettings);
+  }
 }
 
 function showGameDetails(game) {
@@ -344,6 +398,9 @@ function showGameDetails(game) {
   byId('game-query').value = game.name;
   byId('game-description').value = game.info?.customDescription || '';
   byId('game-customize').open = false;
+  byId('game-proton').open = false;
+  byId('proton-status').textContent = '';
+  byId('proton-release').textContent = '';
   renderGameDetails();
   byId('game-editor').showModal();
   if (!game.info?.customDescription && (!game.info?.description ||
@@ -473,6 +530,9 @@ function details(item) {
     const label = item.installed ? t('Abrir') : state.platform === 'linux' ? t('Instalar no Linux') : t('Baixar para {system}', { system: platform });
     body.append(button(label, node => perform(node, () => item.installed ? api.openStore(item.id) : api.downloadStore(item.id)), 'button primary launch'));
   }
+  if (state.platform === 'linux' && ['epic', 'gog'].includes(item.id)) {
+    body.append(button(t('Biblioteca da loja'), () => openLinuxStoreLibrary(item), 'button'));
+  }
   const links = el('div', 'detail-links');
   if (item.website) links.append(button(t('Página oficial ↗'), node => perform(node, () => api.storeWebsite(item.id)), 'plain'));
   if (item.available || item.userAdded) {
@@ -483,6 +543,72 @@ function details(item) {
   }
   body.append(links);
   aside.append(art, body);
+}
+
+let storeDialogProvider;
+let storeDialogGames = [];
+let storeDialogBusy = false;
+
+function renderLinuxStoreGames() {
+  const query = byId('linux-store-search').value;
+  const selected = storeDialogGames.filter(game => matches(game.name, query));
+  byId('linux-store-games').replaceChildren(...selected.map(game => {
+    const row = el('div', 'linux-store-game');
+    const install = button(t(game.installed ? 'Atualizar jogo' : 'Instalar jogo'), () => {
+      storeDialogAction(provider => api.installLinuxStoreGame({ provider, id: game.id }), 'Instalando ou atualizando o jogo…');
+    });
+    install.disabled = storeDialogBusy;
+    row.append(el('strong', '', game.name), install);
+    if (game.installed) row.append(button(t('▶ Jogar'), node => {
+      perform(node, () => api.play(storeDialogProvider + '-' + game.id));
+    }, 'button primary'));
+    return row;
+  }));
+}
+
+async function storeDialogAction(action, statusText = 'Consultando…') {
+  if (storeDialogBusy || !storeDialogProvider) return;
+  storeDialogBusy = true;
+  const status = byId('linux-store-status');
+  const controls = [...byId('linux-store-dialog').querySelectorAll('button:not(#linux-store-close), input')];
+  controls.forEach(control => { control.disabled = true; });
+  status.textContent = t(statusText);
+  try {
+    const result = await action(storeDialogProvider);
+    status.textContent = '';
+    if (Array.isArray(result)) {
+      storeDialogGames = result;
+      if (!result.length) status.textContent = t('Nenhum jogo encontrado.');
+      const next = await api.refresh();
+      if (next?.stores) { state = next; render(); }
+    }
+  } catch (error) {
+    status.textContent = t(error.message);
+  } finally {
+    storeDialogBusy = false;
+    controls.forEach(control => { control.disabled = false; });
+    renderLinuxStoreGames();
+  }
+}
+
+function openLinuxStoreLibrary(item) {
+  if (storeDialogBusy || !api.linuxStoreInfo) return;
+  storeDialogProvider = item.id;
+  storeDialogGames = [];
+  byId('linux-store-title').textContent = item.name;
+  byId('linux-store-search').value = '';
+  byId('linux-store-code').value = '';
+  byId('linux-store-account').hidden = true;
+  byId('linux-store-setup').hidden = true;
+  renderLinuxStoreGames();
+  byId('linux-store-dialog').showModal();
+  storeDialogAction(async provider => {
+    const { ready } = await api.linuxStoreInfo(provider);
+    byId('linux-store-account').hidden = !ready;
+    byId('linux-store-setup').hidden = ready;
+    if (!ready) throw new Error(t('Instale {tool} no Linux e abra esta janela novamente.', { tool: provider === 'gog' ? 'gogdl' : 'legendary' }));
+    return api.linuxStoreLibrary(provider);
+  });
 }
 
 function renderCatalog() {
@@ -1214,6 +1340,42 @@ byId('emulator-market').addEventListener('click', () => {
   renderCatalog();
 });
 byId('game-close').addEventListener('click', () => byId('game-editor').close());
+byId('linux-store-close').addEventListener('click', () => byId('linux-store-dialog').close());
+byId('linux-store-search').addEventListener('input', renderLinuxStoreGames);
+byId('linux-store-setup').addEventListener('click', () => storeDialogAction(provider => api.openLinuxStore({ provider, setup: true })));
+byId('linux-store-login').addEventListener('click', async () => {
+  await storeDialogAction(provider => api.openLinuxStore({ provider }));
+  if (!byId('linux-store-status').textContent) byId('linux-store-status').textContent = t('Cole o retorno que apareceu após entrar na conta.');
+});
+byId('linux-store-load').addEventListener('click', () => storeDialogAction(api.linuxStoreLibrary));
+byId('linux-store-connect').addEventListener('submit', event => {
+  event.preventDefault();
+  if (storeDialogBusy) return;
+  const input = byId('linux-store-code');
+  const code = input.value;
+  input.value = '';
+  storeDialogAction(provider => api.connectLinuxStore({ provider, code }));
+});
+byId('game-proton').addEventListener('toggle', event => {
+  if (event.target.open) {
+    changeProton(api.protonSettings);
+    if (api.protonLatest) listLatestProton(selectedGame);
+  }
+});
+byId('proton-version').addEventListener('change', event => {
+  const proton = event.currentTarget.value;
+  changeProton(id => api.protonSave({ id, proton }));
+});
+byId('proton-add').addEventListener('click', () => changeProton(api.protonAdd));
+byId('proton-latest').addEventListener('click', async event => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  await listLatestProton(selectedGame, true);
+  button.disabled = false;
+});
+byId('proton-help').addEventListener('click', () => changeProton(api.protonHelp));
+byId('proton-prefix').addEventListener('click', () => changeProton(id => api.protonPrefix({ id })));
+byId('proton-prefix-reset').addEventListener('click', () => changeProton(id => api.protonPrefix({ id, reset: true })));
 byId('game-lookup').addEventListener('click', async event => {
   const node = event.currentTarget;
   const label = node.textContent;

@@ -13,8 +13,21 @@ const macApps = {
   retroarch: 'RetroArch', pcsx2: 'PCSX2', ppsspp: 'PPSSPP'
 };
 
-function hostCommand(file, args) {
-  return inFlatpak ? ['flatpak-spawn', ['--host', file, ...args]] : [file, args];
+function hostCommand(file, args, { cwd, environment = {} } = {}) {
+  if (!inFlatpak) return [file, args];
+  const env = Object.entries(environment).map(([key, value]) => '--env=' + key + '=' + value);
+  return ['flatpak-spawn', ['--host', ...env, ...(cwd ? ['--directory=' + cwd] : []), file, ...args]];
+}
+
+async function openWebLink(url, shell) {
+  if (!inFlatpak) return shell.openExternal(url);
+  const [command, args] = hostCommand('xdg-open', [url]);
+  await run(command, args, { timeout: 12000 });
+}
+
+async function runHostTool(file, args, { environment = {}, ...options } = {}) {
+  const [command, commandArgs] = hostCommand(file, args, { environment });
+  return run(command, commandArgs, { env: { ...process.env, ...environment }, ...options });
 }
 
 async function tryRun(file, args) {
@@ -110,7 +123,7 @@ async function steamGames(roots) {
 
 async function findLinuxCommand(name, env) {
   if (inFlatpak) {
-    const file = await tryRun('which', [name]);
+    const file = await tryRun('sh', ['-c', 'command -v "$1"', 'peragames', name]);
     return path.isAbsolute(file) ? file : undefined;
   }
   for (const directory of (env.PATH || '').split(path.delimiter)) {
@@ -212,14 +225,21 @@ async function detectStores(stores, platform, env, data, roots) {
   return Object.fromEntries(pairs);
 }
 
-function launch(file, args = [], { cwd = path.dirname(file), visible = false } = {}) {
+function launch(file, args = [], { cwd = path.dirname(file), visible = false, environment = {}, hostCwd, wait = false } = {}) {
   if (process.platform === 'darwin' && file.endsWith('.app')) {
     return run('/usr/bin/open', ['-a', file, ...(args.length ? ['--args', ...args] : [])]);
   }
-  const [command, commandArgs] = hostCommand(file, args);
+  const [command, commandArgs] = hostCommand(file, args, { cwd: hostCwd, environment });
   return new Promise((resolve, reject) => {
-    const child = spawn(command, commandArgs, { cwd: inFlatpak ? undefined : cwd, detached: true, stdio: 'ignore', windowsHide: !visible });
+    const child = spawn(command, commandArgs, {
+      cwd: inFlatpak ? undefined : cwd, env: { ...process.env, ...environment },
+      detached: true, stdio: 'ignore', windowsHide: !visible
+    });
     child.once('error', reject);
+    if (wait) {
+      child.once('close', code => code === 0 ? resolve() : reject(new Error('Process exited with code ' + code)));
+      return;
+    }
     child.once('spawn', () => {
       child.unref();
       resolve();
@@ -227,4 +247,4 @@ function launch(file, args = [], { cwd = path.dirname(file), visible = false } =
   });
 }
 
-module.exports = { getSteamRoots, steamGames, readLibraryFolders, readVdfString, detectStores, fileExists, launch, isMacBundle, macApps };
+module.exports = { getSteamRoots, steamGames, readLibraryFolders, readVdfString, detectStores, fileExists, launch, isMacBundle, macApps, findLinuxCommand, openWebLink, runHostTool };

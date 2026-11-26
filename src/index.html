@@ -233,6 +233,23 @@
         <h3>Sobre o jogo</h3>
         <p id="game-summary"></p>
         <dl id="game-facts"></dl>
+        <details id="game-proton" hidden>
+          <summary>Compatibilidade com Proton</summary>
+          <p id="proton-note"></p>
+          <p id="proton-release" role="status"></p>
+          <label>Versão do Proton <select id="proton-version" disabled></select></label>
+          <div class="actions">
+            <button class="button" id="proton-add">Adicionar Proton</button>
+            <button class="button" id="proton-latest">Verificar GE-Proton</button>
+            <button class="button" id="proton-help" hidden>Instalar umu-launcher</button>
+          </div>
+          <p id="proton-prefix-text"></p>
+          <div class="actions">
+            <button class="button" id="proton-prefix">Usar prefixo Wine existente</button>
+            <button class="button" id="proton-prefix-reset" hidden>Voltar ao prefixo padrão</button>
+          </div>
+          <p id="proton-status" role="status"></p>
+        </details>
         <details id="game-customize">
           <summary>Personalizar ficha</summary>
           <div class="actions modal-cover-actions">
@@ -306,6 +323,26 @@
     <div id="gallery-launcher-options"></div>
     <div class="actions dialog-actions">
       <button class="button primary" id="gallery-add-launcher">Adicionar programa manualmente</button>
+    </div>
+  </dialog>
+  <dialog id="linux-store-dialog" aria-labelledby="linux-store-title">
+    <div class="section-head">
+      <h2 id="linux-store-title"></h2>
+      <button class="button" id="linux-store-close" aria-label="Fechar">×</button>
+    </div>
+    <p id="linux-store-status" role="status"></p>
+    <button class="button" id="linux-store-setup" hidden>Instalar componente da loja</button>
+    <div id="linux-store-account" hidden>
+      <div class="actions">
+        <button class="button" id="linux-store-login">Abrir login no navegador</button>
+        <button class="button" id="linux-store-load">Sincronizar jogos da conta</button>
+      </div>
+      <form id="linux-store-connect">
+        <label>Código ou URL de retorno do login <input id="linux-store-code" type="password" maxlength="1600" autocomplete="off" required></label>
+        <button class="button" type="submit">Vincular conta</button>
+      </form>
+      <label>Pesquisar jogos <input id="linux-store-search" type="search"></label>
+      <div id="linux-store-games"></div>
     </div>
   </dialog>
   <div id="notice" role="status" aria-live="polite" hidden></div>

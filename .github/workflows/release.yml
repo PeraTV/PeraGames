@@ -98,7 +98,10 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     needs: [windows, linux, mac]
-    if: ${{ always() && needs.windows.result == 'success' }}
+    if: ${{ needs.windows.result == 'success' && needs.linux.result == 'success' && needs.mac.result == 'success' }}
+    concurrency:
+      group: peragames-publish-${{ github.ref }}
+      cancel-in-progress: false
     permissions:
       contents: write
     steps:
@@ -114,13 +117,30 @@ jobs:
         run: |
           set -euo pipefail
           tag="v$(node -p 'require("./package.json").version')"
+          latest=$(gh release list --limit 100 --json tagName,isLatest --jq '.[] | select(.isLatest) | .tagName')
+          if [[ "$latest" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && "$(printf '%s\n' "$tag" "$latest" | sort -V | tail -1)" != "$tag" ]]; then
+            exit 0
+          fi
           if gh release view "$tag" >/dev/null 2>&1; then
+            existing=$(gh release view "$tag" --json assets --jq '.assets[].name')
             for file in release-files/*; do
-              if ! gh release view "$tag" --json assets --jq '.assets[].name' | grep -Fxq "$(basename "$file")"; then
+              if ! grep -Fxq "$(basename "$file")" <<< "$existing"; then
                 gh release upload "$tag" "$file"
               fi
             done
           else
-            gh release create "$tag" release-files/* --target "$GITHUB_SHA" --title "PeraGames $tag" --generate-notes
+            gh release create "$tag" release-files/* --target "$GITHUB_SHA" --title "PeraGames $tag" --generate-notes --latest
           fi
-
+          published=$(gh release view "$tag" --json assets --jq '.assets[].name')
+          for name in PeraGames-Windows-x64-Setup.exe PeraGames-Linux-x64.flatpak PeraGames-Linux-arm64.flatpak PeraGames-macOS-universal.dmg; do
+            grep -Fxq "$name" <<< "$published"
+          done
+          active=$(gh release list --limit 100 --json tagName,isLatest --jq '.[] | select(.isLatest) | .tagName')
+          [[ "$active" == "$tag" ]] || exit 0
+          older=$(gh release list --limit 100 --json tagName,isDraft,isPrerelease --jq '.[] | select(.isDraft == false and .isPrerelease == false) | .tagName')
+          while IFS= read -r previous; do
+            [[ "$previous" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && "$previous" != "$tag" ]] || continue
+            if [[ "$(printf '%s\n' "$previous" "$tag" | sort -V | tail -1)" == "$tag" ]]; then
+              gh release delete "$previous" --yes
+            fi
+          done <<< "$older"

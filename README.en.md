@@ -38,6 +38,12 @@ flatpak run io.github.PeraTV.PeraGames
 
 Use the x64 bundle if `uname -m` prints `x86_64`. If it prints `aarch64`, use `PeraGames-Linux-arm64.flatpak` instead. Adjust `~/Downloads` if you saved the file elsewhere. A software manager with Flatpak support can also open the downloaded file. [Distribution-specific setup instructions](https://flathub.org/en/setup).
 
+### Proton, Epic Games, and GOG on Linux
+
+- Install [umu-launcher](https://github.com/Open-Wine-Components/umu-launcher#installation) on Linux. In **Library → Add game**, select the game's `.exe`. Open **Proton compatibility** in the game's details to select a detected version, add your own Proton folder, or use an existing Wine prefix. **Latest GE-Proton (automatic)** lets UMU get the current release when you play. **Check for GE-Proton releases** shows the latest published version.
+- Open **Stores → Epic Games/GOG → Store library**, sign in through your browser, and paste the resulting code or callback URL in PeraGames. Epic uses [Legendary](https://github.com/legendary-gl/legendary), and GOG uses [gogdl](https://github.com/Heroic-Games-Launcher/heroic-gogdl). Install the components on the host and make `legendary`, `gogdl`, and `umu-run` available on PATH. Install or update compatible titles from the store library. Installed titles appear in the PeraGames library with per-game Proton settings.
+- This integration uses Windows builds of supported titles. Steam titles use the compatibility settings in the game's Steam properties.
+
 ## Library and customization
 
 | | |

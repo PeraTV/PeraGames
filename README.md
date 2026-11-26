@@ -38,6 +38,12 @@ flatpak run io.github.PeraTV.PeraGames
 
 Use o pacote x64 se `uname -m` mostrar `x86_64`. Se mostrar `aarch64`, troque o nome do arquivo por `PeraGames-Linux-arm64.flatpak`. Ajuste `~/Downloads` se você salvou o arquivo em outra pasta. Em um ambiente com suporte a Flatpak configurado, também é possível abrir o arquivo pelo gerenciador de software. [Instruções por distribuição](https://flathub.org/pt/setup).
 
+### Proton, Epic Games e GOG no Linux
+
+- Instale o [umu-launcher](https://github.com/Open-Wine-Components/umu-launcher#installation) no sistema Linux. Em **Biblioteca → Adicionar jogo**, selecione o `.exe` do jogo. Na ficha, abra **Compatibilidade com Proton** para escolher uma versão detectada, adicionar a pasta de um Proton próprio ou reutilizar um prefixo Wine. **GE-Proton mais recente (automático)** deixa o UMU obter a versão atual ao jogar. **Verificar GE-Proton** mostra a versão publicada.
+- Em **Lojas → Epic Games/GOG → Biblioteca da loja**, conecte a conta pelo navegador e cole o código ou URL de retorno na janela do PeraGames. No Linux, a Epic usa o [Legendary](https://github.com/legendary-gl/legendary) e a GOG usa o [gogdl](https://github.com/Heroic-Games-Launcher/heroic-gogdl). Instale os componentes no sistema e deixe os comandos `legendary`, `gogdl` e `umu-run` disponíveis no PATH. A biblioteca da loja oferece instalação e atualização dos jogos compatíveis. Os jogos instalados aparecem na Biblioteca do PeraGames com configuração individual de Proton.
+- A integração usa as versões Windows dos jogos. Jogos da Steam continuam usando a compatibilidade selecionada nas propriedades do jogo na Steam.
+
 ## Biblioteca e personalização
 
 | | |
