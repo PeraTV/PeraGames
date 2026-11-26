@@ -481,7 +481,9 @@ Nenhum download nesta sessão.|No downloads this session.
 A fila de downloads está cheia.|The download queue is full.
 A loja ainda não confirmou a instalação.|The store has not confirmed the installation.
 A instalação desta loja ainda não está disponível neste sistema.|Installation through this store is not available on this system yet.
-A loja não pode abrir este jogo neste sistema.|This store cannot launch the game on this system.`.split('\n').map(line => line.split('|')));
+A loja não pode abrir este jogo neste sistema.|This store cannot launch the game on this system.
+Ver atualização|See update
+Agora não|Not now`.split('\n').map(line => line.split('|')));
 
   function languageFor(locale) {
     return /^pt(?:[-_]|$)/i.test(locale || 'pt-BR') ? 'pt-BR' : 'en';

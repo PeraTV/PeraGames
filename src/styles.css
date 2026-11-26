@@ -419,6 +419,14 @@ body[data-palette]:not([data-palette="amber"]) :focus-visible { outline-color: v
 }
 .hero-copy:has(.hero-title-long) .actions { margin-top: clamp(14px, 2.25vh, 26px); }
 #app-update-open { font-weight: 800; }
+#app-update-open[data-update-available] { border-color: var(--amber); box-shadow: 0 0 0 2px var(--amber); }
+#update-banner {
+  position: fixed; z-index: 6; inset: auto auto 16px 16px;
+  max-width: min(360px, calc(100vw - 32px)); padding: 13px 15px;
+  border: 1px solid var(--line); border-radius: 12px;
+  background: var(--surface); box-shadow: 0 10px 30px #0009;
+}
+#update-banner .actions { margin-top: 9px; flex-wrap: wrap; }
 .modal-cover-actions { margin-top: 10px; gap: 7px; }
 .game-metadata { min-width: 0; }
 .game-metadata h3 { font-size: 20px; margin-bottom: 7px; }

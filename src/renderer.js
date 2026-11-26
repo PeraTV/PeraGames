@@ -1757,7 +1757,7 @@ byId('game-setup-form').addEventListener('submit', event => {
   }, 'Salvando na biblioteca…');
 });
 byId('refresh-games').addEventListener('click', event => perform(event.currentTarget, api.refresh, 'Biblioteca atualizada.'));
-async function checkAppUpdate() {
+async function checkAppUpdate({ automatic = false } = {}) {
   const status = byId('app-update-status');
   const check = byId('app-update-check');
   const release = byId('app-update-release');
@@ -1776,6 +1776,12 @@ async function checkAppUpdate() {
       available: t('A versão {version} está disponível.', { version: latest })
     };
     status.textContent = t('Versão instalada: {version}. {message}', { version, message: messages[result] });
+    byId('app-update-open').toggleAttribute('data-update-available', result === 'available');
+    if (result !== 'available') byId('update-banner').hidden = true;
+    else if (automatic && !byId('app-update-dialog').open) {
+      byId('update-banner-text').textContent = t('A versão {version} está disponível.', { version: latest });
+      byId('update-banner').hidden = false;
+    }
     release.hidden = result !== 'available' || installable;
     install.hidden = !installable;
   } catch {
@@ -1788,6 +1794,11 @@ byId('app-update-open').addEventListener('click', () => {
   byId('app-update-dialog').showModal();
   checkAppUpdate();
 });
+byId('update-banner-open').addEventListener('click', () => {
+  byId('update-banner').hidden = true;
+  byId('app-update-dialog').showModal();
+});
+byId('update-banner-dismiss').addEventListener('click', () => { byId('update-banner').hidden = true; });
 byId('app-update-close').addEventListener('click', () => byId('app-update-dialog').close());
 byId('app-update-check').addEventListener('click', checkAppUpdate);
 byId('app-update-release').addEventListener('click', event => perform(event.currentTarget, api.openAppRelease));
@@ -1800,6 +1811,8 @@ byId('app-update-install').addEventListener('click', async event => {
   status.textContent = t('Baixando e verificando a atualização…');
   try {
     const installed = await api.installAppUpdate();
+    byId('update-banner').hidden = true;
+    byId('app-update-open').removeAttribute('data-update-available');
     status.textContent = installed?.restart ? t('Atualização instalada. Feche e reabra o PeraGames pelo menu.') :
       t('A atualização está pronta para ser instalada.');
     button.hidden = true;
@@ -2088,5 +2101,6 @@ async function start() {
   requestAnimationFrame(pollPad);
   render();
   perform(byId('refresh-games'), api.refresh);
+  void checkAppUpdate({ automatic: true });
 }
 start();
