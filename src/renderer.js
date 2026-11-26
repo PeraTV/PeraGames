@@ -119,7 +119,8 @@ function button(text, action, className = 'button') {
 }
 
 function notify(message) {
-  const notice = byId('tv-appearance').open ? byId('tv-appearance-feedback') :
+  const notice = byId('preferences-dialog').open ? byId('prefs-feedback') :
+    byId('tv-appearance').open ? byId('tv-appearance-feedback') :
     byId('tv-settings').open ? byId('tv-settings-feedback') :
     byId('game-editor').open ? byId('game-feedback') : byId('notice');
   clearTimeout(toastTimer);
@@ -275,6 +276,8 @@ function gameCard(game) {
   return card;
 }
 
+const canInstallStoreGame = game => state.platform !== 'darwin' || game.provider !== 'amazon';
+
 function storeLibraryCard(game) {
   const card = el('article', 'game-card unavailable-game');
   const source = { epic: 'Epic Games', gog: 'GOG', amazon: 'Amazon Games' }[game.provider];
@@ -293,12 +296,11 @@ function storeLibraryCard(game) {
   const install = button(t('Instalar jogo'), async node => {
     node.textContent = t('Instalando…');
     await perform(node, async () => {
-      const games = await api.installLinuxStoreGame({ provider: game.provider, id: game.id });
-      if (games) return api.refresh();
+      await queueStoreGame(game.provider, game.id);
     });
     if (node.isConnected) node.textContent = t('Instalar jogo');
   }, 'button primary');
-  info.append(install);
+  if (canInstallStoreGame(game)) info.append(install);
   card.append(art, info);
   return card;
 }
@@ -445,6 +447,7 @@ function renderGameDetails() {
   byId('game-favorite').hidden = Boolean(previewStoreGame);
   byId('game-customize').hidden = Boolean(previewStoreGame);
   byId('game-play').textContent = t(previewStoreGame ? 'Instalar jogo' : '▶ Jogar');
+  byId('game-play').hidden = Boolean(previewStoreGame && !canInstallStoreGame(previewStoreGame));
   renderCompatibility(game);
 }
 
@@ -614,7 +617,6 @@ function showGameDetails(game) {
   byId('game-query').value = game.name;
   byId('game-description').value = game.info?.customDescription || '';
   byId('game-customize').open = false;
-  byId('grid-settings').open = false;
   byId('grid-key').value = '';
   byId('game-proton').open = false;
   const protonVersion = byId('proton-version');
@@ -761,7 +763,7 @@ function stepHomeHighlight() {
 
 function resetHomeRotation() {
   clearInterval(homeRotation);
-  if (!homePrefs.autoplay || theater || page !== 'home' || byId('hero').hidden || highlightGames().length < 2) return;
+  if (state.preferences?.motion || !homePrefs.autoplay || theater || page !== 'home' || byId('hero').hidden || highlightGames().length < 2) return;
   homeRotation = setInterval(() => {
     if (document.hidden || document.querySelector('dialog[open]') ||
         byId('featured').matches(':focus, :hover')) return;
@@ -883,15 +885,16 @@ let storeDialogProvider;
 let storeDialogCommand;
 let storeDialogGames = [];
 let storeDialogBusy = false;
+let storeDialogInstallable = false;
 
 function renderLinuxStoreGames() {
   const query = byId('linux-store-search').value;
   const selected = storeDialogGames.filter(game => matches(game.name, query));
   byId('linux-store-games').replaceChildren(...selected.map(game => {
     const row = el('div', 'linux-store-game');
-    const install = button(t(game.installed ? 'Atualizar jogo' : 'Instalar jogo'), () => {
-      storeDialogAction(provider => api.installLinuxStoreGame({ provider, id: game.id }), 'Instalando ou atualizando o jogo…');
-    });
+    const install = button(t(game.installed ? 'Atualizar jogo' : 'Instalar jogo'), node =>
+      perform(node, () => queueStoreGame(storeDialogProvider, game.id)));
+    install.hidden = !storeDialogInstallable;
     install.disabled = storeDialogBusy;
     row.append(el('strong', '', game.name), install);
     if (game.installed) row.append(button(t('▶ Jogar'), node => {
@@ -944,11 +947,12 @@ function openLinuxStoreLibrary(item) {
 }
 
 async function loadLinuxStoreLibrary(provider) {
-  const { ready, commandName } = await api.linuxStoreInfo(provider);
+  const { ready, commandName, installable } = await api.linuxStoreInfo(provider);
+  storeDialogInstallable = Boolean(installable);
   storeDialogCommand = commandName;
   byId('linux-store-account').hidden = !ready;
   byId('linux-store-setup').hidden = ready;
-  byId('linux-store-system').hidden = ready;
+  byId('linux-store-system').hidden = ready || state.platform !== 'linux';
   byId('linux-store-tool').hidden = ready;
   if (!ready) throw new Error(t('Instale ou vincule o componente {tool} para conectar a conta.', { tool: commandName }));
   return api.linuxStoreLibrary(provider);
@@ -1004,8 +1008,12 @@ function renderCatalog() {
 
 function render() {
   clearInterval(homeRotation);
-  byId('game-accounts').hidden = state.platform !== 'linux';
-  byId('library-install-filter').hidden = state.platform !== 'linux';
+  byId('game-accounts').hidden = false;
+  byId('library-install-filter').hidden = !Object.keys(state.ownedStoreGames || {}).length;
+  document.body.toggleAttribute('data-reduced-motion', Boolean(state.preferences?.motion));
+  document.body.toggleAttribute('data-always-titles', Boolean(state.preferences?.titles));
+  document.body.toggleAttribute('data-color-uninstalled', Boolean(state.preferences?.color));
+  if (byId('preferences-dialog').open && settingsTab === 'accounts') renderAccounts();
   if (theater) {
     renderTheater();
     return;
@@ -1540,19 +1548,182 @@ byId('app-search-system').addEventListener('click', event =>
 byId('favorites-only').addEventListener('change', render);
 byId('add-game').addEventListener('click', event => addGameFromLibrary(event.currentTarget));
 byId('library-install-filter').addEventListener('change', render);
-byId('game-accounts').addEventListener('click', () => {
-  const dialog = byId('game-accounts-dialog');
+let downloadJobs = [];
+let steamJobs = [];
+let steamPoll;
+let steamReading = false;
+let settingsTab = 'accounts';
+const storeNames = { epic: 'Epic Games', gog: 'GOG', amazon: 'Amazon Games' };
+
+function renderDownloadJobs() {
+  const panel = byId('download-jobs');
+  const focused = document.activeElement?.dataset.downloadAction;
+  const labels = { queued: 'Na fila', running: 'Instalando…', done: 'Concluído', failed: 'Falhou', external: 'Gerenciado pela Steam' };
+  panel.replaceChildren(...[...downloadJobs, ...steamJobs].map(job => {
+    const row = el('article', 'settings-card download-row');
+    const store = state.stores.find(item => item.id === job.source);
+    if (store) row.append(storeIcon(store));
+    const content = el('div', 'download-info');
+    content.append(el('strong', '', job.name), el('p', '', (storeNames[job.source] || job.source) + ' · ' + t(labels[job.status])));
+    if (job.status === 'running' || job.status === 'done' || job.status === 'external') {
+      const bar = el('progress');
+      bar.max = 100;
+      bar.setAttribute('aria-label', t('Progresso da instalação'));
+      if (job.progress !== undefined) {
+        bar.value = job.progress;
+        content.append(el('span', 'download-percent', Math.floor(job.progress) + '%'));
+      }
+      content.append(bar);
+    }
+    if (job.error) content.append(el('p', '', t(job.error)));
+    row.append(content);
+    if (job.status !== 'running' && job.status !== 'external') {
+      const actions = el('div', 'actions');
+      const actionsByStatus = job.status === 'failed' ? [['retry', 'Tentar novamente', api.retryDownload]] : [];
+      for (const [act, label, method] of [...actionsByStatus, ['remove', job.status === 'queued' ? 'Remover da fila' : 'Dispensar', api.removeDownload]]) {
+        const control = button(t(label), node => perform(node, () => method(job.id)), 'plain');
+        control.dataset.downloadAction = job.id + ':' + act;
+        actions.append(control);
+      }
+      row.append(actions);
+    }
+    return row;
+  }));
+  if (!downloadJobs.length && !steamJobs.length) panel.append(el('p', 'settings-empty', t('Nenhum download nesta sessão.')));
+  if (focused) Array.from(panel.querySelectorAll('[data-download-action]'))
+    .find(node => node.dataset.downloadAction === focused)?.focus({ preventScroll: true });
+}
+
+function renderAccounts() {
   const options = state.stores.filter(store => ['epic', 'gog', 'amazon'].includes(store.id)).map(store => {
     const connected = Object.hasOwn(state.ownedStoreGames || {}, store.id);
-    return button(store.name + ' · ' + t(connected ? 'Sincronizar' : 'Conectar'), () => {
-      dialog.close();
+    const tile = button('', () => {
+      byId('preferences-dialog').close();
       openLinuxStoreLibrary(store);
-    });
+    }, 'settings-card account-tile');
+    const label = el('span');
+    label.append(el('strong', '', store.name), el('small', '', t(connected ? 'Sincronizar' : 'Conectar')));
+    tile.append(storeIcon(store), label);
+    return tile;
   });
-  byId('game-account-options').replaceChildren(...options);
-  dialog.showModal();
+  byId('prefs-account-options').replaceChildren(...options);
+}
+
+async function renderPreferencesTab(tab) {
+  clearInterval(steamPoll);
+  settingsTab = tab;
+  for (const control of byId('preferences-dialog').querySelectorAll('[data-settings]')) {
+    const current = control.dataset.settings === tab;
+    control.setAttribute('aria-pressed', String(current));
+    byId('prefs-' + control.dataset.settings).hidden = !current;
+  }
+  if (tab === 'accounts') renderAccounts();
+  if (tab === 'integrations') {
+    byId('grid-status').textContent = t(!state.gridConfigured ? 'Adicione sua chave para buscar capas automaticamente.' :
+      state.gridKeySaved ? 'SteamGridDB conectado.' : 'SteamGridDB conectado nesta sessão.');
+    byId('grid-remove').hidden = !state.gridConfigured;
+  }
+  if (tab === 'diagnostics') {
+    try {
+      const report = await api.diagnostics();
+      const fields = [['Sistema operacional', report.system], ['Processador', report.processor], ['Memória', report.memory], ['Versão do PeraGames', report.version]];
+      byId('prefs-system-report').replaceChildren(...fields.map(([label, value]) => {
+        const row = el('div', 'settings-card');
+        row.append(el('dt', '', t(label)), el('dd', '', value));
+        return row;
+      }));
+    } catch (error) { notify(error.message); }
+  }
+  if (tab === 'downloads') {
+    const readSteam = async () => {
+      if (steamReading || document.hidden || settingsTab !== 'downloads' || !byId('preferences-dialog').open) return;
+      steamReading = true;
+      try {
+        const jobs = await api.steamProgress();
+        if (JSON.stringify(jobs) !== JSON.stringify(steamJobs)) {
+          steamJobs = jobs;
+          if (settingsTab === 'downloads' && byId('preferences-dialog').open) renderDownloadJobs();
+        }
+      } catch {} finally { steamReading = false; }
+    };
+    steamPoll = setInterval(readSteam, 4000);
+    void readSteam();
+    renderDownloadJobs();
+    const current = downloadJobs;
+    try {
+      const jobs = await api.downloadsList();
+      if (downloadJobs === current) downloadJobs = jobs;
+      if (settingsTab === 'downloads') renderDownloadJobs();
+    } catch (error) { notify(error.message); }
+  }
+  byId('prefs-install-path').textContent = state.preferences?.installDirectory || t('Escolhida ao instalar cada jogo.');
+}
+
+async function openPreferences(tab = 'accounts') {
+  const prefs = state.preferences || {};
+  byId('prefs-locale').value = prefs.locale || 'system';
+  byId('prefs-zoom').value = prefs.zoom || 100;
+  byId('prefs-zoom-value').value = byId('prefs-zoom').value + '%';
+  for (const key of ['motion', 'titles', 'color']) byId('prefs-' + key).checked = Boolean(prefs[key]);
+  byId('prefs-feedback').hidden = true;
+  if (!byId('preferences-dialog').open) byId('preferences-dialog').showModal();
+  await renderPreferencesTab(tab);
+}
+
+async function queueStoreGame(provider, id) {
+  if (!(await api.installLinuxStoreGame({ provider, id }))?.queued) return;
+  for (const dialog of ['linux-store-dialog', 'game-editor']) {
+    if (byId(dialog).open) byId(dialog).close();
+  }
+  await openPreferences('downloads');
+}
+
+byId('preferences-open').addEventListener('click', () => openPreferences());
+byId('preferences-close').addEventListener('click', () => byId('preferences-dialog').close());
+byId('grid-settings-link').addEventListener('click', () => openPreferences('integrations'));
+byId('preferences-dialog').addEventListener('close', () => clearInterval(steamPoll));
+byId('game-accounts').addEventListener('click', () => openPreferences('accounts'));
+for (const node of byId('preferences-dialog').querySelectorAll('[data-settings]')) {
+  node.addEventListener('click', () => renderPreferencesTab(node.dataset.settings));
+}
+byId('prefs-steam-downloads').addEventListener('click', event => perform(event.currentTarget, api.steamDownloads));
+byId('prefs-steam-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const input = byId('prefs-steam-link');
+  if (await perform(byId('prefs-steam-submit'), () => api.steamInstall(input.value))) input.value = '';
 });
-byId('game-accounts-close').addEventListener('click', () => byId('game-accounts-dialog').close());
+byId('prefs-copy-report').addEventListener('click', event => perform(event.currentTarget, api.copyDiagnostics, 'Diagnóstico copiado.'));
+byId('prefs-zoom').addEventListener('input', event => { byId('prefs-zoom-value').value = event.target.value + '%'; });
+byId('prefs-zoom-reset').addEventListener('click', () => {
+  byId('prefs-zoom').value = 100;
+  byId('prefs-zoom-value').value = '100%';
+});
+byId('prefs-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const locale = byId('prefs-locale').value;
+  const changed = locale !== (state.preferences?.locale || 'system');
+  const saved = await perform(byId('prefs-save'), () => api.savePreferences({
+    locale, zoom: Number(byId('prefs-zoom').value), motion: byId('prefs-motion').checked,
+    titles: byId('prefs-titles').checked, color: byId('prefs-color').checked
+  }), 'Configurações salvas.');
+  if (saved && changed) await api.control('reload');
+});
+for (const [id, reset] of [['prefs-pick-path', false], ['prefs-reset-path', true]]) {
+  byId(id).addEventListener('click', async event => {
+    if (await perform(event.currentTarget, () => api.installDirectory(reset)) && settingsTab === 'installation') {
+      renderPreferencesTab('installation');
+    }
+  });
+}
+api.onDownloads(jobs => {
+  downloadJobs = jobs;
+  if (byId('preferences-dialog').open && settingsTab === 'downloads') renderDownloadJobs();
+});
+api.onDownloadLibrary(library => {
+  state = library;
+  render();
+  if (byId('game-editor').open) renderGameDetails();
+});
 byId('game-setup-close').addEventListener('click', () => byId('game-setup-dialog').close());
 byId('game-setup-edit').addEventListener('click', () => {
   byId('game-editor').close();
@@ -1835,7 +2006,8 @@ async function saveGridKey(node, key) {
   if (gridView?.lookupPending) gridView.requested = false;
   else gridView = {};
   delete byId('game-poster').dataset.sources;
-  return perform(node, () => api.saveGridKey(key));
+  const saved = await perform(node, () => api.saveGridKey(key));
+  if (saved && settingsTab === 'integrations') renderPreferencesTab('integrations');
 }
 byId('grid-form').addEventListener('submit', async event => {
   event.preventDefault();
@@ -1850,10 +2022,7 @@ byId('game-play').addEventListener('click', event => {
   const game = previewStoreGame;
   return perform(event.currentTarget, async () => {
     if (!game) return api.play(selectedGame);
-    const games = await api.installLinuxStoreGame({ provider: game.provider, id: game.id });
-    if (!games) return;
-    if (games.some(item => item.id === game.id && item.installed) && previewStoreGame === game) byId('game-editor').close();
-    return api.refresh();
+    await queueStoreGame(game.provider, game.id);
   });
 });
 byId('game-compatibility').addEventListener('click', event =>

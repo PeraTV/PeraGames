@@ -111,7 +111,7 @@ function readLibraryFolders(text) {
     .map(match => match[1].replace(/\\(["\\])/g, '$1'));
 }
 
-async function steamGames(roots) {
+async function steamManifests(roots, readManifest) {
   const libraries = new Set(roots.map(root => path.join(root, 'steamapps')));
   const folderLists = await Promise.all([...libraries].map(dir =>
     fs.readFile(path.join(dir, 'libraryfolders.vdf'), 'utf8').catch(() => '')));
@@ -127,9 +127,7 @@ async function steamGames(roots) {
       const text = await fs.readFile(path.join(dir, file), 'utf8').catch(() => '');
       const appId = readVdfString(text, 'appid');
       const name = readVdfString(text, 'name');
-      const state = Number(readVdfString(text, 'StateFlags'));
-      if (!appId || !/^\d+$/.test(appId) || !name || !(state & 4)) return null;
-      return { id: 'steam-' + appId, appId, name, source: 'Steam' };
+      return appId && /^\d+$/.test(appId) && name ? readManifest({ appId, name, text }) : null;
     }));
   }));
 
@@ -138,6 +136,22 @@ async function steamGames(roots) {
     if (game) games.set(game.id, game);
   }
   return [...games.values()];
+}
+
+function steamGames(roots) {
+  return steamManifests(roots, ({ appId, name, text }) => Number(readVdfString(text, 'StateFlags')) & 4 ?
+    { id: 'steam-' + appId, appId, name, source: 'Steam' } : null);
+}
+
+function steamDownloads(roots) {
+  return steamManifests(roots, ({ appId, name, text }) => {
+    const flags = Number(readVdfString(text, 'StateFlags'));
+    const total = Number(readVdfString(text, 'BytesToDownload'));
+    const downloaded = Number(readVdfString(text, 'BytesDownloaded'));
+    if (!Number.isFinite(flags) || flags === 4 || !Number.isSafeInteger(total) || !Number.isSafeInteger(downloaded) ||
+        downloaded < 0 || downloaded >= total) return null;
+    return { id: 'steam-' + appId, name, source: 'Steam', status: 'external', progress: 100 * downloaded / total };
+  });
 }
 
 async function findLinuxCommand(name, env) {
@@ -274,7 +288,7 @@ async function detectStores(stores, platform, env, data, roots) {
   return Object.fromEntries(pairs);
 }
 
-function launch(file, args = [], { cwd = path.dirname(file), visible = false, environment = {}, hostCwd, wait = false } = {}) {
+function launch(file, args = [], { cwd = path.dirname(file), visible = false, environment = {}, hostCwd, wait = false, onLine } = {}) {
   if (process.platform === 'darwin' && file.endsWith('.app')) {
     return run('/usr/bin/open', ['-a', file, ...(args.length ? ['--args', ...args] : [])]);
   }
@@ -282,8 +296,18 @@ function launch(file, args = [], { cwd = path.dirname(file), visible = false, en
   return new Promise((resolve, reject) => {
     const child = spawn(command, commandArgs, {
       cwd: inFlatpak ? undefined : cwd, env: { ...process.env, ...environment },
-      detached: true, stdio: 'ignore', windowsHide: !visible
+      detached: !onLine, stdio: onLine ? ['ignore', 'pipe', 'pipe'] : 'ignore', windowsHide: !visible
     });
+    if (onLine) for (const stream of [child.stdout, child.stderr]) {
+      let remainder = '';
+      stream.setEncoding('utf8');
+      stream.on('data', chunk => {
+        const lines = (remainder + chunk).split(/[\r\n]/);
+        remainder = lines.pop().slice(-4096);
+        for (const line of lines) onLine(line);
+      });
+      stream.on('end', () => { if (remainder) onLine(remainder); });
+    }
     child.once('error', reject);
     if (wait) {
       child.once('close', code => code === 0 ? resolve() : reject(new Error('Process exited with code ' + code)));
@@ -296,5 +320,5 @@ function launch(file, args = [], { cwd = path.dirname(file), visible = false, en
   });
 }
 
-module.exports = { getSteamRoots, steamGames, readLibraryFolders, readVdfString, detectStores, fileExists, launch, isMacBundle,
+module.exports = { getSteamRoots, steamGames, steamDownloads, readLibraryFolders, readVdfString, detectStores, fileExists, launch, isMacBundle,
   macApps, findLinuxCommand, openWebLink, runHostTool, flathubId, installFlatpak, openLinuxSoftware };

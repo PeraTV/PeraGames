@@ -437,7 +437,51 @@ SteamGridDB conectado.|SteamGridDB connected.
 SteamGridDB conectado nesta sessão.|SteamGridDB connected for this session.
 Informe uma chave de API válida do SteamGridDB.|Enter a valid SteamGridDB API key.
 A chave do SteamGridDB não foi aceita.|SteamGridDB rejected the API key.
-Não foi possível consultar o SteamGridDB.|Could not contact SteamGridDB.`.split('\n').map(line => line.split('|')));
+Não foi possível consultar o SteamGridDB.|Could not contact SteamGridDB.
+Configurações|Settings
+Aparência e acessibilidade|Appearance and accessibility
+Downloads|Downloads
+Instalação|Installation
+Integrações|Integrations
+Diagnóstico|Diagnostics
+Informações do sistema|System information
+Sistema operacional|Operating system
+Processador|Processor
+Memória|Memory
+Versão do PeraGames|PeraGames version
+Copiar diagnóstico|Copy diagnostics
+Diagnóstico copiado.|Diagnostics copied.
+Configurar SteamGridDB|Configure SteamGridDB
+Abrir downloads da Steam ↗|Open Steam downloads ↗
+Instalar um jogo da Steam|Install a Steam game
+Link do jogo na loja ou AppID|Game store link or AppID
+Abrir instalação na Steam ↗|Open installer in Steam ↗
+Cole um link de jogo da loja Steam ou um AppID válido.|Paste a Steam store game link or a valid AppID.
+Gerenciado pela Steam|Managed by Steam
+Idioma|Language
+Idioma do sistema|System language
+Zoom da interface|Interface zoom
+Restaurar zoom de 100%|Restore 100% zoom
+Reduzir animações|Reduce animations
+Sempre mostrar títulos na biblioteca|Always show titles in the library
+Capas coloridas para jogos não instalados|Use color covers for uninstalled games
+Pasta padrão de instalação|Default install folder
+Escolher pasta|Choose folder
+Escolhida ao instalar cada jogo.|Choose a folder when installing a game.
+Configurações inválidas.|Invalid settings.
+Configurações salvas.|Settings saved.
+Na fila|Queued
+Concluído|Complete
+Falhou|Failed
+Tentar novamente|Retry
+Remover da fila|Remove from queue
+Dispensar|Dismiss
+Progresso da instalação|Installation progress
+Nenhum download nesta sessão.|No downloads this session.
+A fila de downloads está cheia.|The download queue is full.
+A loja ainda não confirmou a instalação.|The store has not confirmed the installation.
+A instalação desta loja ainda não está disponível neste sistema.|Installation through this store is not available on this system yet.
+A loja não pode abrir este jogo neste sistema.|This store cannot launch the game on this system.`.split('\n').map(line => line.split('|')));
 
   function languageFor(locale) {
     return /^pt(?:[-_]|$)/i.test(locale || 'pt-BR') ? 'pt-BR' : 'en';

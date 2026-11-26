@@ -4,6 +4,7 @@ const fs = require('node:fs/promises');
 const { constants } = require('node:fs');
 const path = require('node:path');
 const { findLinuxCommand, runHostTool, launch, fileExists } = require('./system');
+const { readProgress } = require('./downloads');
 
 const providers = {
   epic: {
@@ -48,16 +49,17 @@ function loginCode(provider, input) {
 }
 
 async function storeConfig(provider, root, linked) {
-  if (process.platform !== 'linux' || !Object.hasOwn(providers, provider)) throw new Error('Loja indisponível neste sistema.');
+  if (!Object.hasOwn(providers, provider)) throw new Error('Loja indisponível neste sistema.');
   const config = providers[provider];
   const commandName = config.tool;
   const custom = await fileExists(linked) && await fs.access(linked, constants.X_OK).then(() => true, () => false);
-  const tool = custom ? linked : await findLinuxCommand(commandName, process.env);
+  const tool = custom ? linked : await findLinuxCommand(commandName + (process.platform === 'win32' ? '.exe' : ''), process.env);
   if (!tool) return { ...config, commandName, ready: false };
   const dir = path.join(root, 'stores', provider);
   await fs.mkdir(dir, { recursive: true, mode: 0o700 });
   return {
     ...config, tool, dir, commandName, ready: true,
+    installable: process.platform !== 'darwin' || provider !== 'amazon',
     baseArgs: provider === 'gog' ? ['--auth-config-path', path.join(dir, 'auth.json')] : [],
     environment: provider === 'gog' ? { GOGDL_CONFIG_PATH: dir } :
       provider === 'amazon' ? { NILE_CONFIG_PATH: dir } : { LEGENDARY_CONFIG_PATH: dir }
@@ -178,17 +180,26 @@ async function gogGameFolder(root, id) {
   const entries = await fs.readdir(root, { withFileTypes: true }).catch(() => []);
   const folders = [root, ...entries.filter(entry => entry.isDirectory()).map(entry => path.join(root, entry.name))];
   for (const folder of folders) {
-    if (await fileExists(path.join(folder, 'goggame-' + id + '.info'))) return folder;
+    const manifest = 'goggame-' + id + '.info';
+    if (await fileExists(path.join(folder, manifest))) return folder;
+    if (process.platform !== 'darwin') continue;
+    const bundles = (await fs.readdir(folder).catch(() => [])).filter(name => name.endsWith('.app'));
+    for (const bundle of bundles) {
+      if (await fileExists(path.join(folder, bundle, 'Contents', 'Resources', manifest))) return folder;
+    }
   }
 }
 
-async function install(provider, config, id, folder) {
+async function install(provider, config, id, folder, progress) {
+  const mac = process.platform === 'darwin';
   const args = provider === 'gog'
-    ? ['download', id, '--platform', 'windows', '--path', folder, '--with-dlcs']
+    ? ['download', id, '--platform', mac ? 'osx' : 'windows', '--path', folder, '--with-dlcs']
     : provider === 'amazon' ? ['install', id, ...(folder ? ['--base-path', folder] : [])]
-      : ['-y', 'install', id, ...(folder ? ['--base-path', folder] : []), '--skip-dlcs'];
+      : ['-y', 'install', id, ...(folder ? ['--base-path', folder] : []), ...(mac ? ['--platform', 'Mac'] : []), '--skip-dlcs'];
   try {
-    await launch(config.tool, [...config.baseArgs, ...args], { environment: config.environment, wait: true });
+    await launch(config.tool, [...config.baseArgs, ...args], {
+      environment: config.environment, wait: true, onLine: line => progress(readProgress(line))
+    });
     if (provider === 'gog') {
       const installed = await gogGameFolder(folder, id);
       if (!installed) throw new Error('Missing game directory');
@@ -198,12 +209,11 @@ async function install(provider, config, id, folder) {
 }
 
 function play(provider, config, { id, folder, umu, environment }) {
-  // Both tools parse the wrapper with shlex, so quote the executable as one argument.
-  const wrapper = "'" + umu.replaceAll("'", "'\"'\"'") + "'";
-  const args = provider === 'gog' ? ['launch', folder, id, '--platform', 'windows'] : ['launch', id];
-  return launch(config.tool, [...config.baseArgs, ...args, '--no-wine', '--wrapper', wrapper], {
+  const args = provider === 'gog' ? ['launch', folder, id, '--platform', process.platform === 'darwin' ? 'osx' : 'windows'] : ['launch', id];
+  const wrapper = umu ? ['--no-wine', '--wrapper', "'" + umu.replaceAll("'", "'\"'\"'") + "'"] : [];
+  return launch(config.tool, [...config.baseArgs, ...args, ...wrapper], {
     environment: { ...config.environment, ...environment }
   });
 }
 
-module.exports = { storeConfig, storeGameId, loginCode, loginUrl, library, connect, install, play };
+module.exports = { storeConfig, storeGameId, loginCode, loginUrl, library, connect, install, play, gogGameFolder };

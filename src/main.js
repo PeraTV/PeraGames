@@ -7,7 +7,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { stores, romFormats, romArguments } = require('./catalog');
-const { getSteamRoots, steamGames, detectStores, fileExists, launch, isMacBundle, macApps, findLinuxCommand,
+const { getSteamRoots, steamGames, steamDownloads, detectStores, fileExists, launch, isMacBundle, macApps, findLinuxCommand,
   openWebLink, flathubId, installFlatpak, openLinuxSoftware, runHostTool } = require('./system');
 const { isWindowsGame, isProtonDirectory, findProtonVersions, findWineVersions, latestGEProton, windowsRunner } = require('./proton');
 const linuxStores = require('./linux-stores');
@@ -15,13 +15,15 @@ const steamProton = require('./steam-proton');
 const protonCatalog = require('./proton-catalog');
 const { browseSteam, steamAssets, lookupGame, cleanTitle, titleKey, featuredSteamArt } = require('./game-info');
 const { getCompatibility, protonDBPage } = require('./game-compatibility');
+const { createDownloads } = require('./downloads');
 const { findGridCover, preferencesUrl, verifyGridKey } = require('./steamgriddb');
 const { romArtwork } = require('./rom-art');
 const { loginFlag, setTvLogin } = require('./tv-startup');
 const { version, updateRepository } = require('../package.json');
 
 const { languageFor, translator } = require('./i18n');
-const systemLocale = () => app.getPreferredSystemLanguages?.()[0] || app.getLocale?.() || 'pt-BR';
+const systemLocale = () => data.preferences.locale === 'system'
+  ? app.getPreferredSystemLanguages?.()[0] || app.getLocale?.() || 'pt-BR' : data.preferences.locale;
 const translate = (message, values) => translator(systemLocale())(message, values);
 
 const { createUpdater } = require('./app-update');
@@ -34,10 +36,12 @@ const isAmazonInstaller = file => /^amazongamessetup(?: ?\(\d+\))?\.exe$/i.test(
 const storeDownload = ({ id, windowsUrl, linuxUrl, website }) =>
   platform === 'win32' ? windowsUrl : platform === 'darwin' ? (macApps[id] ? website || windowsUrl : '') : linuxUrl;
 const runnable = async file => await fileExists(file) || (platform === 'darwin' && await isMacBundle(file));
+const defaultPreferences = { locale: 'system', zoom: 100, motion: false, titles: false, color: false, installDirectory: '' };
 const emptyData = () => ({
   games: [], roms: [], apps: {}, favorites: [], played: {}, featured: null, customStores: [],
   gameCovers: {}, gameBackdrops: {}, gameDetails: {}, steamPrograms: [],
   gridCovers: {},
+  preferences: { ...defaultPreferences },
   gameProton: {}, protonFolders: [], ownedStoreGames: {}, storeTools: {},
   tv: { openOnLaunch: false, atLogin: false, layout: 'cinema', layoutRevision: 1 },
   dolphinPassthrough: false
@@ -47,6 +51,10 @@ let gridKey = '';
 const canSaveGridKey = async () => await safeStorage?.isAsyncEncryptionAvailable() &&
   (platform !== 'linux' || !['basic_text', 'unknown'].includes(safeStorage.getSelectedStorageBackend()));
 const windows = new Map();
+function broadcast(channel, value) {
+  for (const window of windows.values()) if (!window.isDestroyed()) window.webContents.send(channel, value);
+}
+const downloads = createDownloads(jobs => broadcast('downloads:changed', jobs));
 let detected = {};
 let installedGames = [];
 let installedPrograms = [];
@@ -63,6 +71,7 @@ async function loadData() {
   try {
     const saved = JSON.parse(await fs.readFile(file, 'utf8'));
     data = { ...emptyData(), ...saved };
+    data.preferences = { ...defaultPreferences, ...saved.preferences };
     if (typeof saved.gridKey === 'string' && await canSaveGridKey()) {
       try { ({ result: gridKey } = await safeStorage.decryptStringAsync(Buffer.from(saved.gridKey, 'base64'))); } catch {}
     }
@@ -189,7 +198,8 @@ function state() {
     gridConfigured: Boolean(gridKey),
     gridKeySaved: Boolean(gridKey && data.gridKey),
     games: [...data.games.filter(game => !game.launcher), ...installedGames].map(gameState),
-    ownedStoreGames: platform === 'linux' ? data.ownedStoreGames : {},
+    ownedStoreGames: data.ownedStoreGames,
+    preferences: data.preferences,
     roms: data.roms.map(gameState),
     featured: data.featured,
     tv: { ...data.tv, loginLaunch: process.argv.includes(loginFlag) ||
@@ -250,7 +260,8 @@ function createWindow() {
     minWidth: 760, minHeight: 560, show: false, frame: false,
     backgroundColor: '#1c0811', autoHideMenuBar: true,
     icon: path.join(__dirname, 'assets', platform === 'win32' ? 'pera-mark.ico' : 'pera-mark.png'),
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), sandbox: true, contextIsolation: true, nodeIntegration: false }
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), sandbox: true, contextIsolation: true, nodeIntegration: false,
+      zoomFactor: data.preferences.zoom / 100 }
   });
   windows.set(window.webContents.id, window);
   const id = window.webContents.id;
@@ -281,10 +292,63 @@ handle('window:control', (action, window) => {
   if (action === 'theater-enter' && !window.isFullScreen()) window.setFullScreen(true);
   if (action === 'theater-exit' && window.isFullScreen()) window.setFullScreen(false);
   if (action === 'close') setImmediate(() => window.close());
+  if (action === 'reload') setImmediate(() => window.webContents.reload());
 });
 
 handle('catalog:refresh', async () => { await scan(); return state(); });
 handle('app:locale', systemLocale);
+handle('app:preferences', async ({ locale, zoom, motion, titles, color }, window) => {
+  if (!['system', 'pt-BR', 'en'].includes(locale) || !Number.isInteger(zoom) || zoom < 60 || zoom > 200) {
+    throw new Error('Configurações inválidas.');
+  }
+  await updateData(copy => {
+    Object.assign(copy.preferences, { locale, zoom, motion: motion === true, titles: titles === true, color: color === true });
+  });
+  window.webContents.setZoomFactor(zoom / 100);
+  return state();
+});
+handle('app:install-directory', async (reset, window) => {
+  if (!reset) {
+    const result = await dialog.showOpenDialog(window, {
+      title: translate('Pasta padrão de instalação'), properties: ['openDirectory', 'createDirectory'],
+      defaultPath: data.preferences.installDirectory || undefined
+    });
+    if (result.canceled) return;
+    await updateData(copy => { copy.preferences.installDirectory = result.filePaths[0]; });
+  } else await updateData(copy => { copy.preferences.installDirectory = ''; });
+  return state();
+});
+function systemReport() {
+  return {
+    system: os.type() + ' ' + os.release() + ' · ' + process.arch,
+    processor: os.cpus()[0]?.model || '',
+    memory: (os.totalmem() / (1024 ** 3)).toFixed(1) + ' GiB',
+    version
+  };
+}
+handle('app:diagnostics', systemReport);
+handle('app:copy-diagnostics', () => {
+  const report = systemReport();
+  clipboard.writeText([
+    'PeraGames ' + report.version, report.system, 'CPU: ' + report.processor, 'RAM: ' + report.memory
+  ].join('\n'));
+});
+handle('downloads:list', () => downloads.list());
+handle('downloads:remove', id => downloads.remove(id));
+handle('downloads:retry', id => downloads.retry(id));
+handle('downloads:steam', () => shell.openExternal('steam://open/downloads'));
+handle('downloads:steam-install', value => {
+  const input = typeof value === 'string' ? value.trim() : '';
+  const id = /^\d{1,10}$/.test(input) ? input :
+    /^https:\/\/store\.steampowered\.com\/app\/(\d{1,10})(?:[/?#]|$)/i.exec(input)?.[1];
+  if (!id) throw new Error('Cole um link de jogo da loja Steam ou um AppID válido.');
+  return shell.openExternal('steam://install/' + id);
+});
+handle('downloads:steam-progress', async () => {
+  const roots = await getSteamRoots(platform, process.env, os.homedir());
+  if (data.apps.steam) roots.unshift(path.dirname(data.apps.steam));
+  return steamDownloads(roots);
+});
 handle('app:update-check', updater.check);
 handle('app:update-open', updater.open);
 handle('app:update-install', updater.install);
@@ -352,7 +416,7 @@ async function refreshLinuxLibrary(provider, config) {
   const localGames = data.games.filter(game => game.store === provider);
   const installed = new Set((await Promise.all(localGames.map(async game => {
     if (provider !== 'gog') return game.storeId;
-    return game.installFolder && await fileExists(path.join(game.installFolder, 'goggame-' + game.storeId + '.info')) ? game.storeId : null;
+    return game.installFolder && await linuxStores.gogGameFolder(game.installFolder, game.storeId) ? game.storeId : null;
   }))).filter(Boolean));
   const entries = games.map(game => ({
     ...game, installed: Boolean(game.installed || (provider === 'gog' && installed.has(game.id)))
@@ -380,8 +444,8 @@ async function withStore(provider, action) {
 }
 
 handle('linux-store:info', async provider => {
-  const { ready, commandName } = await linuxStore(provider);
-  return { ready, commandName };
+  const { ready, commandName, installable } = await linuxStore(provider);
+  return { ready, commandName, installable };
 });
 handle('linux-store:link-tool', async (provider, window) => {
   await linuxStore(provider);
@@ -398,27 +462,41 @@ handle('linux-store:connect', ({ provider, code }) => withStore(provider, async 
   await linuxStores.connect(provider, config, code);
   return refreshLinuxLibrary(provider, config);
 }));
-handle('linux-store:install', async ({ provider, id }, window) => withStore(provider, async config => {
+handle('linux-store:install', async ({ provider, id }, window) => {
+  const config = await linuxStore(provider);
   const entry = data.ownedStoreGames[provider]?.find(game => game.id === id);
   if (!config.ready || !entry || !linuxStores.storeGameId(provider, id)) throw new Error('Atualize a biblioteca da loja e selecione um jogo.');
+  if (!config.installable) throw new Error('A instalação desta loja ainda não está disponível neste sistema.');
+  const taskId = provider + ':' + id;
+  if (downloads.has(taskId)) return { queued: true };
   const previous = data.games.find(game => game.store === provider && game.storeId === id);
   let folder = previous?.installBase;
   if (!entry.installed || (provider === 'gog' && !folder)) {
     const result = await dialog.showOpenDialog(window, {
-      title: translate('Selecionar pasta de instalação'), properties: ['openDirectory', 'createDirectory']
+      title: translate('Selecionar pasta de instalação'), properties: ['openDirectory', 'createDirectory'],
+      defaultPath: data.preferences.installDirectory || undefined
     });
     if (result.canceled) return null;
     folder = provider === 'gog' ? path.join(result.filePaths[0], 'GOG-' + id) : result.filePaths[0];
   }
-  const gameFolder = await linuxStores.install(provider, config, id, folder);
-  if (provider === 'gog') await updateData(copy => {
-    const next = { id: 'gog-' + id, name: entry.name, source: 'GOG', store: provider, storeId: id, installBase: folder, installFolder: gameFolder };
-    const index = copy.games.findIndex(game => game.id === next.id);
-    if (index === -1) copy.games.push(next);
-    else copy.games[index] = next;
-  });
-  return refreshLinuxLibrary(provider, config);
-}));
+  downloads.add(taskId, entry.name, provider, progress => withStore(provider, async current => {
+    if (!current.ready) throw new Error('Instale o componente da loja para continuar.');
+    const gameFolder = await linuxStores.install(provider, current, id, folder, progress);
+    if (provider === 'gog') await updateData(copy => {
+      const next = { id: 'gog-' + id, name: entry.name, source: 'GOG', store: provider, storeId: id, installBase: folder, installFolder: gameFolder };
+      const index = copy.games.findIndex(game => game.id === next.id);
+      if (index === -1) copy.games.push(next);
+      else copy.games[index] = next;
+      copy.ownedStoreGames.gog = copy.ownedStoreGames.gog.map(game => game.id === id ? { ...game, installed: true } : game);
+    });
+    else {
+      const games = await refreshLinuxLibrary(provider, current);
+      if (!games.some(game => game.id === id && game.installed)) throw new Error('A loja ainda não confirmou a instalação.');
+    }
+    broadcast('downloads:library', state());
+  }));
+  return { queued: true };
+});
 handle('store:open', async (id, window) => {
   const store = getStore(id);
   const launcher = storeLauncher(id);
@@ -815,6 +893,10 @@ async function playGame(id, window) {
     if (!steam) throw new Error('A Steam não foi detectada. Vincule o executável em Lojas.');
     if (platform === 'darwin') await shell.openExternal('steam://rungameid/' + game.appId);
     else await launch(steam.file, [...steam.args, '-applaunch', game.appId]);
+  } else if (game.store && platform !== 'linux') {
+    const config = await linuxStore(game.store);
+    if (!config.ready || !config.installable) throw new Error('A loja não pode abrir este jogo neste sistema.');
+    await linuxStores.play(game.store, config, { id: game.storeId, folder: game.installFolder });
   } else if (platform === 'linux' && (isWindowsGame(game) || compatibility.executable)) {
     const executable = compatibility.executable || game.file;
     if (!game.store && !await fileExists(executable)) throw new Error('O executável foi movido ou removido.');
