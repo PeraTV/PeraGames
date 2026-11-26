@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=PeraGames
+Comment=Biblioteca de jogos e emuladores
+Exec=peragames-flatpak
+Icon=io.github.PeraTV.PeraGames
+Type=Application
+Categories=Game;
+Terminal=false

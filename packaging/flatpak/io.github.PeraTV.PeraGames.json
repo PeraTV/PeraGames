@@ -1,0 +1,31 @@
+{
+  "app-id": "io.github.PeraTV.PeraGames",
+  "runtime": "org.freedesktop.Platform",
+  "runtime-version": "24.08",
+  "sdk": "org.freedesktop.Sdk",
+  "base": "org.electronjs.Electron2.BaseApp",
+  "base-version": "24.08",
+  "command": "peragames-flatpak",
+  "finish-args": [
+    "--share=ipc", "--share=network", "--socket=x11", "--socket=wayland",
+    "--socket=pulseaudio", "--device=all",
+    "--filesystem=home:ro", "--filesystem=/media:ro", "--filesystem=/run/media:ro",
+    "--talk-name=org.freedesktop.Flatpak"
+  ],
+  "modules": [{
+    "name": "peragames",
+    "buildsystem": "simple",
+    "build-commands": [
+      "mkdir -p /app/share/peragames",
+      "cp -a electron-app/. /app/share/peragames/",
+      "install -Dm755 peragames-flatpak /app/bin/peragames-flatpak",
+      "install -Dm644 io.github.PeraTV.PeraGames.desktop /app/share/applications/io.github.PeraTV.PeraGames.desktop",
+      "install -Dm644 electron-app/resources/app/src/assets/pera-mark.png /app/share/icons/hicolor/512x512/apps/io.github.PeraTV.PeraGames.png"
+    ],
+    "sources": [
+      { "type": "dir", "path": "electron-app", "dest": "electron-app" },
+      { "type": "file", "path": "peragames-flatpak" },
+      { "type": "file", "path": "io.github.PeraTV.PeraGames.desktop" }
+    ]
+  }]
+}

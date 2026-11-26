@@ -1,0 +1,552 @@
+'use strict';
+
+const { app, BrowserWindow, dialog, ipcMain, nativeImage, screen, shell } = require('electron');
+const fs = require('node:fs/promises');
+const { constants } = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { randomUUID } = require('node:crypto');
+const { stores, romFormats, romArguments } = require('./catalog');
+const { getSteamRoots, steamGames, detectStores, fileExists, launch, isMacBundle, macApps } = require('./system');
+const { browseSteam, steamAssets, lookupGame, cleanTitle, featuredSteamArt } = require('./game-info');
+const { romArtwork } = require('./rom-art');
+const { loginFlag, setTvLogin } = require('./tv-startup');
+const { version, updateRepository } = require('../package.json');
+
+const { createUpdater } = require('./app-update');
+const updater = createUpdater({ app, shell, version, repository: updateRepository });
+
+const platform = process.platform;
+const storeDownload = ({ id, windowsUrl, linuxUrl, website }) =>
+  platform === 'win32' ? windowsUrl : platform === 'darwin' ? (macApps[id] ? website || windowsUrl : '') : linuxUrl;
+const runnable = async file => await fileExists(file) || (platform === 'darwin' && await isMacBundle(file));
+const emptyData = () => ({
+  games: [], roms: [], apps: {}, favorites: [], played: {}, featured: null, customStores: [],
+  gameCovers: {}, gameBackdrops: {}, gameDetails: {}, steamPrograms: [],
+  tv: { openOnLaunch: false, atLogin: false, layout: 'cinema', layoutRevision: 1 },
+  dolphinPassthrough: false
+});
+let data = emptyData();
+const windows = new Map();
+let detected = {};
+let installedGames = [];
+let installedPrograms = [];
+const steamItems = new Map();
+const romAssets = new Map();
+const executableIcons = new Map();
+let pendingWrite = Promise.resolve();
+let pendingScan;
+
+async function loadData() {
+  const file = path.join(app.getPath('userData'), 'library.json');
+  try {
+    const saved = JSON.parse(await fs.readFile(file, 'utf8'));
+    data = { ...emptyData(), ...saved };
+    const defaults = emptyData().tv;
+    const tv = saved.tv;
+    data.tv = {
+      ...defaults,
+      openOnLaunch: Boolean(tv?.openOnLaunch),
+      atLogin: Boolean(tv?.atLogin),
+      layout: tv?.layoutRevision === defaults.layoutRevision && ['cockpit', 'gallery'].includes(tv.layout) ? tv.layout : 'cinema'
+    };
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+}
+
+function updateData(change) {
+  const next = pendingWrite.then(async () => {
+    const copy = structuredClone(data);
+    change(copy);
+    const file = path.join(app.getPath('userData'), 'library.json');
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file + '.tmp', JSON.stringify(copy, null, 2), 'utf8');
+    await fs.rename(file + '.tmp', file);
+    data = copy;
+  });
+  pendingWrite = next.catch(() => {});
+  return next;
+}
+
+function catalog() {
+  const steamTools = installedPrograms.filter(item => item.appId !== '1905180').map(item => ({
+    ...item, category: 'Ferramentas', description: 'Aplicativo instalado pela Steam.', steamAppId: item.appId
+  }));
+  return [...stores, ...steamTools, ...data.customStores.map(store => ({
+    ...store, category: 'Lojas', description: 'Atalho para o executável escolhido.', userAdded: true
+  }))];
+}
+
+function getStore(id) {
+  const store = catalog().find(item => item.id === id);
+  if (!store) throw new Error('Aplicativo desconhecido.');
+  return store;
+}
+
+function getGame(id) {
+  const game = [...data.games, ...installedGames, ...data.roms].find(item => item.id === id);
+  if (!game) throw new Error('Jogo não encontrado. Atualize a biblioteca.');
+  return game;
+}
+
+async function refreshRomArtwork() {
+  const queue = data.roms.filter(game => !romAssets.has(game.id));
+  await Promise.all(Array.from({ length: Math.min(8, queue.length) }, async () => {
+    for (let game = queue.shift(); game; game = queue.shift()) {
+      romAssets.set(game.id, await romArtwork(game));
+    }
+  }));
+}
+
+async function readExecutableIcons(apps) {
+  if (platform !== 'win32' || typeof app.getFileIcon !== 'function') return;
+  await Promise.all(Object.values(apps).filter(target => target?.file && !target.args.length && !executableIcons.has(target.file))
+    .map(async target => {
+      try {
+        const icon = await app.getFileIcon(target.file, { size: 'large' });
+        if (!icon.isEmpty()) executableIcons.set(target.file, icon.toDataURL());
+      } catch {}
+    }));
+}
+
+function scan() {
+  if (!pendingScan) {
+    pendingScan = (async () => {
+      const roots = await getSteamRoots(platform, process.env, os.homedir());
+      if (data.apps.steam) roots.unshift(path.dirname(data.apps.steam));
+      const [apps, steam] = await Promise.all([
+        detectStores(catalog(), platform, process.env, data, roots),
+        steamGames(roots),
+        refreshRomArtwork()
+      ]);
+      await readExecutableIcons(apps);
+      const missing = steam.map(game => game.appId).filter(id => !steamItems.has(id));
+      for (const item of await browseSteam(missing)) steamItems.set(String(item.appid), item);
+      const software = new Set([...data.steamPrograms, '1905180']);
+      const oldSize = software.size;
+      for (const game of steam) {
+        if ([6, 13].includes(steamItems.get(game.appId)?.app_type)) software.add(game.appId);
+      }
+      if (software.size > oldSize) await updateData(copy => { copy.steamPrograms = [...software]; });
+      const visible = steam.filter(game => game.appId !== '228980' &&
+        !/^(Steam Linux Runtime|Steamworks Common Redistributables|Proton (?:Experimental|Hotfix|\d))/i.test(game.name));
+      installedPrograms = visible.filter(game => software.has(game.appId));
+      installedGames = visible.filter(game => !software.has(game.appId) &&
+        [0, 1, 2, 12].includes(steamItems.get(game.appId)?.app_type ?? 0));
+      detected = apps;
+    })().finally(() => { pendingScan = undefined; });
+  }
+  return pendingScan;
+}
+
+function state() {
+  const gameState = ({ id, appId, name, source, emulator }) => {
+    const online = data.gameDetails[id];
+    const steam = steamAssets(steamItems.get(appId));
+    const rom = romAssets.get(id);
+    return {
+      id, appId, name: rom?.name || name, source, emulator, system: rom?.system, discId: rom?.id,
+      artwork: [...(rom?.art || []), rom && online?.cover, ...featuredSteamArt(appId), steam.cover, online?.coverFallback].filter(Boolean),
+      screens: rom?.screens,
+      favorite: data.favorites.includes(id), lastPlayed: data.played[id] || 0,
+      customCover: Boolean(data.gameCovers[id]), cover: data.gameCovers[id] || (!rom && online?.cover) || steam.cover,
+      hero: online?.hero || steam.hero, steamHero: steam.hero, customBackdrop: data.gameBackdrops[id], info: online
+    };
+  };
+  return {
+    platform,
+    games: [...data.games, ...installedGames].map(gameState),
+    roms: data.roms.map(gameState),
+    featured: data.featured,
+    tv: { ...data.tv, loginLaunch: process.argv.includes(loginFlag) ||
+      (platform === 'darwin' && data.tv.atLogin && app.getLoginItemSettings().wasOpenedAtLogin) },
+    dolphinPassthrough: data.dolphinPassthrough,
+    stores: catalog().map(({ id, name, category, description, icon, windowsUrl, linuxUrl, website, systems, userAdded, steamAppId }) => {
+      const download = storeDownload({ id, windowsUrl, linuxUrl, website });
+      const fromSteam = steamAppId || (id === 'obs' && installedPrograms.some(item => item.appId === '1905180'));
+      return {
+        id, name, category, description, icon, systems, userAdded, installed: Boolean(detected[id] || fromSteam),
+        executableIcon: executableIcons.get(detected[id]?.file),
+        custom: Boolean(data.apps[id]), available: Boolean(download), website: Boolean(website || download),
+        downloadSource: fromSteam && !detected[id] ? 'Steam' : download?.startsWith('https://flathub.org/') ? 'Flathub' : 'Site oficial'
+      };
+    })
+  };
+}
+
+async function selectExecutable(window, title = 'Selecionar executável') {
+  const options = {
+    properties: ['openFile', 'dontAddToRecent'],
+    title
+  };
+  if (platform === 'win32') options.filters = [{ name: 'Aplicativos do Windows', extensions: ['exe'] }];
+  const selection = await dialog.showOpenDialog(window, options);
+  if (selection.canceled) return null;
+  const file = selection.filePaths[0];
+  if (!await runnable(file)) throw new Error('Selecione um arquivo executável válido.');
+  if (platform === 'win32' && path.extname(file).toLowerCase() !== '.exe') {
+    throw new Error('Selecione um aplicativo com extensão .exe.');
+  }
+  if (platform === 'linux') {
+    await fs.access(file, constants.X_OK).catch(() => {
+      throw new Error('O arquivo selecionado precisa ter permissão de execução.');
+    });
+  }
+  return file;
+}
+
+function samePath(first, second) {
+  return platform === 'win32' ? first.toLowerCase() === second.toLowerCase() : first === second;
+}
+
+function createWindow() {
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+  const window = new BrowserWindow({
+    width: Math.min(1480, width - 24), height: Math.min(985, height - 24),
+    minWidth: 760, minHeight: 560, show: false, frame: false,
+    backgroundColor: '#1c0811', autoHideMenuBar: true,
+    icon: path.join(__dirname, 'assets', platform === 'win32' ? 'pera-mark.ico' : 'pera-mark.png'),
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), sandbox: true, contextIsolation: true, nodeIntegration: false }
+  });
+  windows.set(window.webContents.id, window);
+  const id = window.webContents.id;
+  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  window.webContents.on('will-navigate', event => event.preventDefault());
+  window.on('closed', () => windows.delete(id));
+  window.on('maximize', () => window.webContents.send('maximized', true));
+  window.on('unmaximize', () => window.webContents.send('maximized', false));
+  window.once('ready-to-show', () => window.show());
+  return window.loadFile(path.join(__dirname, 'index.html'));
+}
+
+function handle(channel, action) {
+  ipcMain.handle(channel, async (event, argument) => {
+    const window = windows.get(event.sender.id);
+    if (!window || event.senderFrame !== event.sender.mainFrame) throw new Error('Origem inválida.');
+    try {
+      return { ok: true, value: await action(argument, window) };
+    } catch (error) {
+      return { ok: false, message: error.message || 'A operação falhou.' };
+    }
+  });
+}
+
+handle('window:control', (action, window) => {
+  if (action === 'minimize') window.minimize();
+  if (action === 'maximize') window.isMaximized() ? window.unmaximize() : window.maximize();
+  if (action === 'theater-enter' && !window.isFullScreen()) window.setFullScreen(true);
+  if (action === 'theater-exit' && window.isFullScreen()) window.setFullScreen(false);
+  if (action === 'close') setImmediate(() => window.close());
+});
+
+handle('catalog:refresh', async () => { await scan(); return state(); });
+handle('app:update-check', updater.check);
+handle('app:update-open', updater.open);
+handle('app:update-install', updater.install);
+handle('tv:layout', async layout => {
+  if (!['cockpit', 'cinema', 'gallery'].includes(layout)) throw new Error('Layout do Modo TV inválido.');
+  await updateData(copy => { copy.tv.layout = layout; });
+  return state();
+});
+handle('tv:settings', async settings => {
+  const tv = { openOnLaunch: Boolean(settings?.openOnLaunch), atLogin: Boolean(settings?.atLogin) };
+  if (tv.atLogin !== data.tv.atLogin) await setTvLogin(app, platform, tv.atLogin);
+  try {
+    await updateData(copy => { copy.tv = { ...copy.tv, ...tv }; });
+  } catch (error) {
+    if (tv.atLogin !== data.tv.atLogin) await setTvLogin(app, platform, data.tv.atLogin).catch(() => {});
+    throw error;
+  }
+  return state();
+});
+handle('dolphin:passthrough', async enabled => {
+  await updateData(copy => { copy.dolphinPassthrough = enabled === true; });
+  return state();
+});
+handle('store:download', async id => {
+  const store = getStore(id);
+  const url = storeDownload(store);
+  if (!url) throw new Error('Este aplicativo não está disponível para o seu sistema.');
+  await shell.openExternal(url);
+});
+handle('store:website', async id => {
+  const store = getStore(id);
+  const url = store.website || (platform === 'win32' ? store.windowsUrl : store.linuxUrl);
+  if (url) await shell.openExternal(url);
+});
+handle('store:open', async id => {
+  const store = getStore(id);
+  await scan();
+  const target = detected[id];
+  const steamId = store.steamAppId || (id === 'obs' && installedPrograms.some(game => game.appId === '1905180') ? '1905180' : '');
+  if (!target && steamId && detected.steam) return launch(detected.steam.file, [...detected.steam.args, '-applaunch', steamId]);
+  if (!target) throw new Error('Aplicativo não detectado. Atualize a lista ou vincule seu executável.');
+  if (id === 'dolphin') {
+    await launch(target.file, target.args, { visible: true });
+    return;
+  }
+  await launch(target.file, target.args);
+});
+handle('store:link', async (id, window) => {
+  const store = getStore(id);
+  const available = storeDownload(store);
+  if (!available && !store.userAdded) throw new Error('Este aplicativo não está disponível para o seu sistema.');
+  const file = await selectExecutable(window);
+  if (file) await updateData(copy => { copy.apps[id] = file; });
+  await scan();
+  return state();
+});
+handle('store:unlink', async id => {
+  const store = getStore(id);
+  await updateData(copy => {
+    delete copy.apps[id];
+    if (store.userAdded) copy.customStores = copy.customStores.filter(item => item.id !== id);
+  });
+  await scan();
+  return state();
+});
+handle('store:add-custom', async (_, window) => {
+  const file = await selectExecutable(window);
+  if (!file) return undefined;
+  await updateData(copy => {
+    if (Object.values(copy.apps).some(saved => samePath(saved, file))) {
+      throw new Error('Este executável já está vinculado a um aplicativo.');
+    }
+    const id = randomUUID();
+    copy.customStores.push({ id, name: path.parse(file).name });
+    copy.apps[id] = file;
+  });
+  await scan();
+  return state();
+});
+
+handle('game:add', async (_, window) => {
+  const file = await selectExecutable(window);
+  if (file) {
+    await updateData(copy => {
+      if (copy.games.some(game => samePath(game.file, file))) throw new Error('Este jogo já está na biblioteca.');
+      copy.games.push({ id: randomUUID(), file, name: path.parse(file).name, source: 'Local' });
+    });
+  }
+  return state();
+});
+handle('game:play', async (id, window) => {
+  const game = getGame(id);
+  if (game.emulator === 'android') {
+    if (platform !== 'win32' || path.extname(game.file).toLowerCase() !== '.lnk') throw new Error('Este jogo precisa de um atalho do Windows.');
+    if (!await fileExists(game.file)) throw new Error('O atalho do Android foi movido ou removido. Importe o atalho novamente.');
+    const error = await shell.openPath(game.file);
+    if (error) throw new Error('O Windows não abriu o atalho. Confira se o emulador e o jogo continuam instalados.');
+  } else if (game.emulator) {
+    if (!await fileExists(game.file)) throw new Error('O arquivo do jogo foi movido ou a unidade está desconectada.');
+    if (game.core && !await fileExists(game.core)) throw new Error('O núcleo do RetroArch não foi encontrado. Reimporte a ROM com o núcleo correto.');
+    if (!detected[game.emulator] || !await runnable(detected[game.emulator].file)) await scan();
+    let target = detected[game.emulator];
+    if (!target) {
+      const file = await selectExecutable(window, 'Selecionar o executável de ' + getStore(game.emulator).name);
+      if (!file) return state();
+      await updateData(copy => { copy.apps[game.emulator] = file; });
+      target = { file, args: [], custom: true };
+      detected[game.emulator] = target;
+      await readExecutableIcons({ [game.emulator]: target });
+    }
+    const system = romAssets.get(id)?.system;
+    await launch(target.file, [...target.args, ...romArguments(game, { system, passthrough: data.dolphinPassthrough })],
+      { visible: game.emulator === 'dolphin' });
+  } else if (game.appId) {
+    const steam = detected.steam;
+    if (!steam) throw new Error('A Steam não foi detectada. Vincule o executável em Lojas.');
+    if (platform === 'darwin') await shell.openExternal('steam://rungameid/' + game.appId);
+    else await launch(steam.file, [...steam.args, '-applaunch', game.appId]);
+  } else {
+    if (!await runnable(game.file)) throw new Error('O executável foi movido ou removido.');
+    await launch(game.file);
+  }
+  await updateData(copy => { copy.played[id] = Date.now(); });
+  return state();
+});
+handle('game:favorite', async id => {
+  getGame(id);
+  await updateData(copy => {
+    const favorites = new Set(copy.favorites);
+    favorites.has(id) ? favorites.delete(id) : favorites.add(id);
+    copy.favorites = [...favorites];
+  });
+  return state();
+});
+handle('game:remove', async id => {
+  if (getGame(id).appId) throw new Error('Jogos da Steam são sincronizados automaticamente.');
+  await updateData(copy => {
+    copy.games = copy.games.filter(game => game.id !== id);
+    copy.roms = copy.roms.filter(game => game.id !== id);
+    copy.favorites = copy.favorites.filter(gameId => gameId !== id);
+    delete copy.played[id];
+    delete copy.gameCovers[id];
+    delete copy.gameBackdrops[id];
+    delete copy.gameDetails[id];
+    if (copy.featured?.gameId === id) copy.featured.gameId = '';
+  });
+  romAssets.delete(id);
+  return state();
+});
+handle('feature:store', () => shell.openExternal('https://store.steampowered.com/app/1091500/Cyberpunk_2077/'));
+async function pickImage(window, title, size, landscape = false) {
+  const selection = await dialog.showOpenDialog(window, {
+    title,
+    properties: ['openFile', 'dontAddToRecent'],
+    filters: [{ name: 'Imagens', extensions: ['jpg', 'jpeg', 'png'] }]
+  });
+  if (selection.canceled) return null;
+  const file = selection.filePaths[0];
+  const stats = await fs.stat(file);
+  if (!stats.isFile() || stats.size > 20 * 1024 * 1024) {
+    throw new Error('Escolha uma imagem de até 20 MB.');
+  }
+  let image = nativeImage.createFromPath(file);
+  if (image.isEmpty()) throw new Error('Não consegui abrir esta imagem.');
+  const { width, height } = image.getSize();
+  if (landscape && (width < 900 || width / height < 1.5)) {
+    throw new Error('Escolha uma imagem horizontal, de preferência 1920 × 1080.');
+  }
+  if (Math.max(width, height) > size) {
+    image = image.resize(width >= height ? { width: size } : { height: size });
+  }
+  return 'data:image/jpeg;base64,' + image.toJPEG(83).toString('base64');
+}
+handle('feature:pick-art', (_, window) => pickImage(window, 'Escolher imagem para o destaque', 1600));
+handle('game:cover', async (id, window) => {
+  const game = getGame(id);
+  const cover = await pickImage(window, 'Escolher capa do jogo', 900);
+  if (cover) await updateData(copy => { copy.gameCovers[game.id] = cover; });
+  return state();
+});
+handle('game:reset-cover', async id => {
+  getGame(id);
+  await updateData(copy => { delete copy.gameCovers[id]; });
+  return state();
+});
+handle('game:backdrop', async (id, window) => {
+  getGame(id);
+  const backdrop = await pickImage(window, 'Escolher arte de fundo horizontal', 2560, true);
+  if (backdrop) await updateData(copy => { copy.gameBackdrops[id] = backdrop; });
+  return state();
+});
+handle('game:reset-backdrop', async id => {
+  getGame(id);
+  await updateData(copy => { delete copy.gameBackdrops[id]; });
+  return state();
+});
+handle('game:lookup', async ({ id, query }) => {
+  const game = getGame(id);
+  const startingName = romAssets.get(id)?.name || game.name;
+  const name = typeof query === 'string' ? query.trim().slice(0, 160) || startingName : startingName;
+  const info = await lookupGame({ ...game, name }, steamItems.get(game.appId));
+  if (!info) throw new Error('Não encontrei uma correspondência segura. Você pode preencher a sinopse manualmente.');
+  await updateData(copy => {
+    const previous = copy.gameDetails[id];
+    copy.gameDetails[id] = { ...info, customDescription: previous?.customDescription };
+  });
+  return state();
+});
+handle('game:cover-search', async ({ id, query }) => {
+  const game = getGame(id);
+  const name = typeof query === 'string' ? query.trim().slice(0, 160) || game.name : game.name;
+  const params = new URLSearchParams({ tbm: 'isch', q: name + ' video game box art cover' });
+  await shell.openExternal('https://www.google.com/search?' + params);
+});
+handle('game:save-info', async ({ id, description }) => {
+  getGame(id);
+  if (typeof description !== 'string') throw new Error('Sinopse inválida.');
+  await updateData(copy => {
+    copy.gameDetails[id] = { ...copy.gameDetails[id], customDescription: description.trim().slice(0, 2000) };
+  });
+  return state();
+});
+handle('game:info-source', async id => {
+  getGame(id);
+  const url = data.gameDetails[id]?.url;
+  if (/^https:\/\/(?:store\.steampowered\.com\/app\/\d+\/|pt\.wikipedia\.org\/\?curid=\d+)$/.test(url)) {
+    await shell.openExternal(url);
+  }
+});
+handle('rom:add', async ({ emulator, folder }, window) => {
+  if (!Object.hasOwn(romFormats, emulator)) throw new Error('Escolha um emulador para importar os jogos.');
+  const extensions = romFormats[emulator];
+  const android = emulator === 'android';
+  if (android && platform !== 'win32') throw new Error('Atalhos de jogos Android estão disponíveis no Windows.');
+  const selection = await dialog.showOpenDialog(window, {
+    title: android ? (folder ? 'Selecionar pasta com atalhos Android' : 'Selecionar atalhos dos jogos Android') :
+      (folder ? 'Selecionar pasta de ROMs' : 'Selecionar arquivos de jogos'),
+    properties: folder ? ['openDirectory', 'dontAddToRecent'] : ['openFile', 'multiSelections', 'dontAddToRecent'],
+    ...(folder ? {} : { filters: [{ name: android ? 'Atalhos do Windows' : 'Jogos compatíveis', extensions }] })
+  });
+  if (selection.canceled) return undefined;
+  let candidates = selection.filePaths;
+  if (folder) {
+    const root = candidates[0];
+    const entries = await fs.readdir(root, { withFileTypes: true });
+    candidates = entries.filter(entry => entry.isFile()).map(entry => path.join(root, entry.name));
+  }
+  const files = [];
+  for (const file of candidates) {
+    if (extensions.includes(path.extname(file).slice(1).toLowerCase()) && await fileExists(file)) files.push(file);
+  }
+  if (!files.length) throw new Error('Nenhum jogo compatível foi encontrado na seleção.');
+  let core;
+  if (emulator === 'retroarch') {
+    const extension = platform === 'win32' ? 'dll' : 'so';
+    const choice = await dialog.showOpenDialog(window, {
+      title: 'Selecionar núcleo instalado do RetroArch',
+      properties: ['openFile', 'dontAddToRecent'],
+      filters: [{ name: 'Núcleo do RetroArch', extensions: [extension] }]
+    });
+    if (choice.canceled) return undefined;
+    core = choice.filePaths[0];
+    if (!await fileExists(core) || path.extname(core).toLowerCase() !== '.' + extension) {
+      throw new Error('Selecione um núcleo válido do RetroArch.');
+    }
+  }
+  await updateData(copy => {
+    for (const file of files) {
+      const existing = copy.roms.find(game => game.emulator === emulator && samePath(game.file, file));
+      if (existing) {
+        if (core) existing.core = core;
+        continue;
+      }
+      const name = cleanTitle(path.parse(file).name) || path.parse(file).name;
+      copy.roms.push({ id: randomUUID(), file, core, emulator, name, source: android ? 'Android' : 'ROM' });
+    }
+  });
+  await refreshRomArtwork();
+  return state();
+});
+handle('feature:save', async settings => {
+  const gameId = typeof settings?.gameId === 'string' ? settings.gameId : '';
+  if (gameId) getGame(gameId);
+  const title = typeof settings?.title === 'string' ? settings.title.trim().slice(0, 100) : '';
+  const art = settings?.art || '';
+  if (typeof art !== 'string' || art.length > 3_000_000 || (art && !/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(art))) {
+    throw new Error('Imagem de destaque inválida.');
+  }
+  await updateData(copy => { copy.featured = gameId || title || art ? { gameId, title, art } : null; });
+  return state();
+});
+
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    const window = BrowserWindow.getAllWindows()[0];
+    if (window?.isMinimized()) window.restore();
+    window?.focus();
+  });
+  app.whenReady().then(async () => {
+    await loadData();
+    await createWindow();
+  }).catch(error => {
+    dialog.showErrorBox('PeraGames', 'Falha ao iniciar: ' + error.message);
+    app.quit();
+  });
+  app.on('window-all-closed', () => app.quit());
+}

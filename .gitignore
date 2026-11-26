@@ -1,0 +1,9 @@
+node_modules/
+.build/
+dist/
+PeraGames-Windows/
+Abrir-PeraGames.lnk
+packaging/flatpak/electron-app/
+flatpak-build/
+flatpak-repo/
+*.flatpak
