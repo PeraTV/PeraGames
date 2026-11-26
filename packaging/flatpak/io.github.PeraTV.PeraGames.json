@@ -10,6 +10,8 @@
     "--share=ipc", "--share=network", "--socket=x11", "--socket=wayland",
     "--socket=pulseaudio", "--device=all",
     "--filesystem=home:ro", "--filesystem=/media:ro", "--filesystem=/run/media:ro",
+    "--filesystem=~/.var/app/com.valvesoftware.Steam/data/Steam:ro",
+    "--filesystem=~/.var/app/com.valvesoftware.Steam/.local/share/Steam:ro",
     "--talk-name=org.freedesktop.Flatpak"
   ],
   "modules": [{

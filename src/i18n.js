@@ -313,7 +313,21 @@ Não foi possível instalar ou atualizar o jogo pela loja.|Could not install or 
 Instalar jogo|Install game
 Atualizar jogo|Update game
 Instalando ou atualizando o jogo…|Installing or updating the game…
-Cole o retorno que apareceu após entrar na conta.|Paste the response displayed after signing in.`.split('\n').map(line => line.split('|')));
+Cole o retorno que apareceu após entrar na conta.|Paste the response displayed after signing in.
+Padrão da Steam|Steam default
+Feche a Steam completamente antes de trocar o Proton. A escolha vale na próxima abertura.|Exit Steam before changing Proton. The setting takes effect the next time Steam starts.
+Feche a Steam completamente para salvar a versão do Proton.|Exit Steam completely before saving the Proton version.
+A configuração da Steam não foi encontrada. Abra a Steam uma vez para criá-la.|Steam configuration was not found. Start Steam once to create it.
+Não foi possível ler ou alterar a configuração de compatibilidade da Steam.|Could not read or update Steam compatibility settings.
+A configuração da Steam mudou. Reabra a ficha e tente novamente.|Steam settings changed. Reopen the game details and try again.
+Escolha uma pasta de Proton com compatibilitytool.vdf.|Choose a Proton folder with compatibilitytool.vdf.
+Já existe outra versão nessa pasta de compatibilidade da Steam.|A different version already exists in that Steam compatibility folder.
+A configuração de Proton está disponível no Linux.|Proton settings are available on Linux.
+Instalando pelo Flatpak…|Installing with Flatpak…
+Instalação concluída.|Installation complete.
+O Flatpak não conseguiu instalar {id}.|Flatpak could not install {id}.
+Copiar link|Copy link
+Link copiado.|Link copied.`.split('\n').map(line => line.split('|')));
 
   function languageFor(locale) {
     return /^pt(?:[-_]|$)/i.test(locale || 'pt-BR') ? 'pt-BR' : 'en';

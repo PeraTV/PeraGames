@@ -21,13 +21,31 @@ function hostCommand(file, args, { cwd, environment = {} } = {}) {
 
 async function openWebLink(url, shell) {
   if (!inFlatpak) return shell.openExternal(url);
-  const [command, args] = hostCommand('xdg-open', [url]);
-  await run(command, args, { timeout: 12000 });
+  try { await runHostTool('xdg-open', [url], { timeout: 12000 }); }
+  catch { await shell.openExternal(url); }
 }
 
-async function runHostTool(file, args, { environment = {}, ...options } = {}) {
+async function runHostTool(file, args, { environment = {}, input, ...options } = {}) {
   const [command, commandArgs] = hostCommand(file, args, { environment });
-  return run(command, commandArgs, { env: { ...process.env, ...environment }, ...options });
+  const settings = { env: { ...process.env, ...environment }, ...options };
+  if (input === undefined) return run(command, commandArgs, settings);
+  return new Promise((resolve, reject) => {
+    const child = execFile(command, commandArgs, settings, (error, stdout) => error ? reject(error) : resolve({ stdout }));
+    child.stdin.on('error', () => {});
+    child.stdin.end(input);
+  });
+}
+
+function flathubId(url) {
+  if (typeof url !== 'string') return;
+  return /^https:\/\/flathub\.org\/(?:[a-z-]+\/)?apps\/([A-Za-z][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+){2,})\/?$/.exec(url)?.[1];
+}
+
+async function installFlatpak(id) {
+  await runHostTool('flatpak', [
+    'remote-add', '--user', '--if-not-exists', 'flathub', 'https://dl.flathub.org/repo/flathub.flatpakrepo'
+  ], { timeout: 45000 });
+  await launch('flatpak', ['install', '--user', '--app', '--noninteractive', '--assumeyes', 'flathub', id], { wait: true });
 }
 
 async function tryRun(file, args) {
@@ -59,10 +77,11 @@ function steamRoots(env, home, platform) {
   return [
     path.join(home, '.steam', 'steam'),
     path.join(home, '.steam', 'root'),
-    path.join(env.XDG_DATA_HOME || path.join(home, '.local', 'share'), 'Steam'),
+    path.join(home, '.local', 'share', 'Steam'),
+    env.XDG_DATA_HOME && path.join(env.XDG_DATA_HOME, 'Steam'),
     path.join(home, '.var', 'app', 'com.valvesoftware.Steam', '.local', 'share', 'Steam'),
     path.join(home, '.var', 'app', 'com.valvesoftware.Steam', 'data', 'Steam')
-  ];
+  ].filter(Boolean);
 }
 
 async function registryValue(key, name) {
@@ -247,4 +266,4 @@ function launch(file, args = [], { cwd = path.dirname(file), visible = false, en
   });
 }
 
-module.exports = { getSteamRoots, steamGames, readLibraryFolders, readVdfString, detectStores, fileExists, launch, isMacBundle, macApps, findLinuxCommand, openWebLink, runHostTool };
+module.exports = { getSteamRoots, steamGames, readLibraryFolders, readVdfString, detectStores, fileExists, launch, isMacBundle, macApps, findLinuxCommand, openWebLink, runHostTool, flathubId, installFlatpak };

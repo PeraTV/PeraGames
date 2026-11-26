@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('pera', {
   openStore: id => invoke('store:open', id),
   downloadStore: id => invoke('store:download', id),
   storeWebsite: id => invoke('store:website', id),
+  copyStoreLink: id => invoke('store:copy-link', id),
   linuxStoreInfo: provider => invoke('linux-store:info', provider),
   openLinuxStore: request => invoke('linux-store:open', request),
   linuxStoreLibrary: provider => invoke('linux-store:library', provider),

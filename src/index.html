@@ -220,6 +220,7 @@
         <div class="actions">
           <button class="button primary" id="game-play">▶ Jogar</button>
           <button class="button outline" id="game-favorite" type="button" aria-pressed="false">☆ Favoritar</button>
+          <button class="button outline" id="game-proton-open" type="button" hidden>Proton</button>
           <button class="button outline" id="game-info-source" hidden></button>
         </div>
       </div>
@@ -243,10 +244,12 @@
             <button class="button" id="proton-latest">Verificar GE-Proton</button>
             <button class="button" id="proton-help" hidden>Instalar umu-launcher</button>
           </div>
-          <p id="proton-prefix-text"></p>
-          <div class="actions">
-            <button class="button" id="proton-prefix">Usar prefixo Wine existente</button>
-            <button class="button" id="proton-prefix-reset" hidden>Voltar ao prefixo padrão</button>
+          <div id="proton-prefix-settings">
+            <p id="proton-prefix-text"></p>
+            <div class="actions">
+              <button class="button" id="proton-prefix">Usar prefixo Wine existente</button>
+              <button class="button" id="proton-prefix-reset" hidden>Voltar ao prefixo padrão</button>
+            </div>
           </div>
           <p id="proton-status" role="status"></p>
         </details>

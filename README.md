@@ -42,7 +42,8 @@ Use o pacote x64 se `uname -m` mostrar `x86_64`. Se mostrar `aarch64`, troque o 
 
 - Instale o [umu-launcher](https://github.com/Open-Wine-Components/umu-launcher#installation) no sistema Linux. Em **Biblioteca → Adicionar jogo**, selecione o `.exe` do jogo. Na ficha, abra **Compatibilidade com Proton** para escolher uma versão detectada, adicionar a pasta de um Proton próprio ou reutilizar um prefixo Wine. **GE-Proton mais recente (automático)** deixa o UMU obter a versão atual ao jogar. **Verificar GE-Proton** mostra a versão publicada.
 - Em **Lojas → Epic Games/GOG → Biblioteca da loja**, conecte a conta pelo navegador e cole o código ou URL de retorno na janela do PeraGames. No Linux, a Epic usa o [Legendary](https://github.com/legendary-gl/legendary) e a GOG usa o [gogdl](https://github.com/Heroic-Games-Launcher/heroic-gogdl). Instale os componentes no sistema e deixe os comandos `legendary`, `gogdl` e `umu-run` disponíveis no PATH. A biblioteca da loja oferece instalação e atualização dos jogos compatíveis. Os jogos instalados aparecem na Biblioteca do PeraGames com configuração individual de Proton.
-- A integração usa as versões Windows dos jogos. Jogos da Steam continuam usando a compatibilidade selecionada nas propriedades do jogo na Steam.
+- Para jogos da Steam, abra a ficha e clique em **Proton**. Feche a Steam pelo menu **Steam → Sair** antes de escolher a versão ou de importar uma pasta de Proton. A seleção vale para aquele jogo na próxima abertura da Steam.
+- Em **Lojas**, o botão **Instalar no Linux** instala os aplicativos do Flathub pelo Flatpak do sistema. Quando o aplicativo usa outro distribuidor, o PeraGames abre a página de instalação e oferece **Copiar link**.
 
 ## Biblioteca e personalização
 

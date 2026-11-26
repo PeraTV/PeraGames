@@ -484,24 +484,24 @@
 @media (max-width: 1150px) {
   #theater .tv-navigation button { padding-inline: 6px; }
 }
-@media (max-width: 1760px) {
-  #theater:is([data-layout="cockpit"], [data-layout="gallery"]) {
-    grid-template-rows: minmax(46px, max-content) minmax(44px, max-content) minmax(0, 1fr) var(--tv-footer);
-  }
-  #theater:is([data-layout="cockpit"], [data-layout="gallery"]) .theater-top {
-    align-items: center;
-    padding-block: 0;
-  }
-  #theater:is([data-layout="cockpit"], [data-layout="gallery"]) .tv-navigation {
-    grid-row: 2;
-    align-self: center;
-    justify-self: center;
-    max-width: 100%;
-    margin: 4px 0;
-  }
-  #theater:is([data-layout="cockpit"], [data-layout="gallery"]) .theater-core { grid-row: 3; }
-  #theater:is([data-layout="cockpit"], [data-layout="gallery"]) .theater-foot { grid-row: 4; }
+#theater:is([data-layout="cockpit"], [data-layout="gallery"]) {
+  grid-template-rows: minmax(46px, max-content) minmax(44px, max-content) minmax(0, 1fr) var(--tv-footer);
 }
+#theater:is([data-layout="cockpit"], [data-layout="gallery"]) .theater-top {
+  align-items: center;
+  gap: 8px;
+  padding-block: 3px;
+}
+#theater:is([data-layout="cockpit"], [data-layout="gallery"]) .tv-header-actions { flex-wrap: wrap; justify-content: flex-end; }
+#theater:is([data-layout="cockpit"], [data-layout="gallery"]) .tv-navigation {
+  grid-row: 2;
+  align-self: center;
+  justify-self: center;
+  max-width: 100%;
+  margin: 4px 0;
+}
+#theater:is([data-layout="cockpit"], [data-layout="gallery"]) .theater-core { grid-row: 3; }
+#theater:is([data-layout="cockpit"], [data-layout="gallery"]) .theater-foot { grid-row: 4; }
 
 body[data-palette]:not([data-palette="amber"]) #theater {
   --tv-accent: var(--amber); --tv-edge: var(--line); --tv-ink: var(--bg); --tv-panel: var(--surface);

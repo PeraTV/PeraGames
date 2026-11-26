@@ -337,21 +337,27 @@ function renderGameDetails() {
   byId('game-query').disabled = Boolean(game.appId);
   byId('game-query-label').hidden = Boolean(game.appId);
   byId('game-proton').hidden = !game.canUseProton;
+  byId('game-proton-open').hidden = !game.canUseProton;
 }
 
 function showProtonSettings(settings) {
   const select = byId('proton-version');
-  const value = settings.proton || 'GE-Proton';
+  const fallback = settings.steam ? 'steam-default' : 'GE-Proton';
+  const value = settings.proton || fallback;
   const options = settings.versions.map(({ name, path }) => new Option(name, path));
-  if (value !== 'GE-Proton' && !options.some(option => option.value === value)) {
+  if (value !== fallback && !options.some(option => option.value === value)) {
     options.push(new Option(t('A versão selecionada do Proton não foi encontrada.'), value));
   }
-  select.replaceChildren(new Option(t('GE-Proton mais recente (automático)'), 'GE-Proton'), ...options);
+  select.replaceChildren(new Option(t(settings.steam ? 'Padrão da Steam' : 'GE-Proton mais recente (automático)'), fallback), ...options);
   select.value = value;
-  byId('proton-note').textContent = settings.umu
+  select.dataset.saved = value;
+  byId('proton-note').textContent = settings.steam
+    ? t('Feche a Steam completamente antes de trocar o Proton. A escolha vale na próxima abertura.')
+    : settings.umu
     ? t('O modo automático baixa e atualiza o GE-Proton ao iniciar o jogo.')
     : t('Instale o umu-launcher no Linux para iniciar jogos com Proton.');
-  byId('proton-help').hidden = settings.umu;
+  byId('proton-help').hidden = settings.steam || settings.umu;
+  byId('proton-prefix-settings').hidden = settings.steam;
   byId('proton-prefix-text').textContent = settings.prefix
     ? t('Prefixo Wine: {folder}', { folder: settings.prefix }) : t('Prefixo separado para este jogo');
   byId('proton-prefix-reset').hidden = !settings.prefix;
@@ -384,7 +390,11 @@ async function changeProton(action) {
     status.textContent = '';
     if (result?.versions) showProtonSettings(result);
   } catch (error) {
-    if (selectedGame === id) status.textContent = t(error.message);
+    if (selectedGame === id) {
+      const select = byId('proton-version');
+      if (select.dataset.saved) select.value = select.dataset.saved;
+      status.textContent = t(error.message);
+    }
   } finally {
     pendingProton = false;
     controls.forEach(control => { control.disabled = false; });
@@ -399,6 +409,13 @@ function showGameDetails(game) {
   byId('game-description').value = game.info?.customDescription || '';
   byId('game-customize').open = false;
   byId('game-proton').open = false;
+  const protonVersion = byId('proton-version');
+  protonVersion.replaceChildren();
+  protonVersion.disabled = true;
+  delete protonVersion.dataset.saved;
+  byId('proton-note').textContent = '';
+  byId('proton-prefix-settings').hidden = true;
+  byId('proton-help').hidden = true;
   byId('proton-status').textContent = '';
   byId('proton-release').textContent = '';
   renderGameDetails();
@@ -528,13 +545,21 @@ function details(item) {
   body.append(facts);
   if (item.installed || item.available) {
     const label = item.installed ? t('Abrir') : state.platform === 'linux' ? t('Instalar no Linux') : t('Baixar para {system}', { system: platform });
-    body.append(button(label, node => perform(node, () => item.installed ? api.openStore(item.id) : api.downloadStore(item.id)), 'button primary launch'));
+    body.append(button(label, async node => {
+      if (!item.installed && item.canInstallFlatpak) node.textContent = t('Instalando pelo Flatpak…');
+      await perform(node, () => item.installed ? api.openStore(item.id) : api.downloadStore(item.id),
+        !item.installed && item.canInstallFlatpak ? 'Instalação concluída.' : undefined);
+      if (node.isConnected) node.textContent = label;
+    }, 'button primary launch'));
   }
   if (state.platform === 'linux' && ['epic', 'gog'].includes(item.id)) {
     body.append(button(t('Biblioteca da loja'), () => openLinuxStoreLibrary(item), 'button'));
   }
   const links = el('div', 'detail-links');
   if (item.website) links.append(button(t('Página oficial ↗'), node => perform(node, () => api.storeWebsite(item.id)), 'plain'));
+  if (item.website && state.platform === 'linux') {
+    links.append(button(t('Copiar link'), node => perform(node, () => api.copyStoreLink(item.id), 'Link copiado.'), 'plain'));
+  }
   if (item.available || item.userAdded) {
     links.append(button(item.custom ? t('Trocar executável') : t('Localizar executável'), node => perform(node, () => api.linkStore(item.id)), 'plain'));
   }
@@ -1361,6 +1386,11 @@ byId('game-proton').addEventListener('toggle', event => {
     changeProton(api.protonSettings);
     if (api.protonLatest) listLatestProton(selectedGame);
   }
+});
+byId('game-proton-open').addEventListener('click', () => {
+  const panel = byId('game-proton');
+  panel.open = true;
+  panel.querySelector('summary').focus();
 });
 byId('proton-version').addEventListener('change', event => {
   const proton = event.currentTarget.value;

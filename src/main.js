@@ -1,15 +1,16 @@
 'use strict';
 
-const { app, BrowserWindow, dialog, ipcMain, nativeImage, screen, shell } = require('electron');
+const { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, screen, shell } = require('electron');
 const fs = require('node:fs/promises');
 const { constants } = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { stores, romFormats, romArguments } = require('./catalog');
-const { getSteamRoots, steamGames, detectStores, fileExists, launch, isMacBundle, macApps, findLinuxCommand, openWebLink } = require('./system');
+const { getSteamRoots, steamGames, detectStores, fileExists, launch, isMacBundle, macApps, findLinuxCommand, openWebLink, flathubId, installFlatpak } = require('./system');
 const { isWindowsGame, isProtonDirectory, findProtonVersions, latestGEProton, protonEnvironment } = require('./proton');
 const linuxStores = require('./linux-stores');
+const steamProton = require('./steam-proton');
 const { browseSteam, steamAssets, lookupGame, cleanTitle, featuredSteamArt } = require('./game-info');
 const { romArtwork } = require('./rom-art');
 const { loginFlag, setTvLogin } = require('./tv-startup');
@@ -17,7 +18,7 @@ const { version, updateRepository } = require('../package.json');
 
 const { languageFor, translator } = require('./i18n');
 const systemLocale = () => app.getPreferredSystemLanguages?.()[0] || app.getLocale?.() || 'pt-BR';
-const translate = message => translator(systemLocale())(message);
+const translate = (message, values) => translator(systemLocale())(message, values);
 
 const { createUpdater } = require('./app-update');
 const updater = createUpdater({ app, shell, version, repository: updateRepository });
@@ -156,7 +157,7 @@ function state() {
     const rom = romAssets.get(id);
     return {
       id, appId, name: rom?.name || name, source, emulator, system: rom?.system, discId: rom?.id,
-      canUseProton: platform === 'linux' && isWindowsGame({ file, emulator, appId, store }),
+      canUseProton: platform === 'linux' && (Boolean(appId) || isWindowsGame({ file, emulator, appId, store })),
       artwork: [...(rom?.art || []), rom && online?.cover, ...featuredSteamArt(appId), steam.cover, online?.coverFallback].filter(Boolean),
       screens: rom?.screens,
       favorite: data.favorites.includes(id), lastPlayed: data.played[id] || 0,
@@ -179,6 +180,7 @@ function state() {
         id, name: userAdded ? name : translate(name), category, description: translate(description), icon, systems: translate(systems), userAdded, installed: Boolean(detected[id] || fromSteam),
         executableIcon: executableIcons.get(detected[id]?.file),
         custom: Boolean(data.apps[id]), available: Boolean(download), website: Boolean(website || download),
+        canInstallFlatpak: platform === 'linux' && Boolean(flathubId(download)),
         downloadSource: fromSteam && !detected[id] ? 'Steam' : download?.startsWith('https://flathub.org/') ? 'Flathub' : translate('Site oficial')
       };
     })
@@ -280,6 +282,13 @@ handle('store:download', async id => {
   const store = getStore(id);
   const url = storeDownload(store);
   if (!url) throw new Error('Este aplicativo não está disponível para o seu sistema.');
+  const appId = platform === 'linux' && flathubId(url);
+  if (appId) {
+    try { await installFlatpak(appId); }
+    catch { throw new Error(translate('O Flatpak não conseguiu instalar {id}.', { id: appId })); }
+    await scan();
+    return state();
+  }
   try { await openWebLink(url, shell); }
   catch { throw new Error('Não foi possível abrir o navegador do sistema. Verifique o navegador padrão.'); }
 });
@@ -290,6 +299,11 @@ handle('store:website', async id => {
     try { await openWebLink(url, shell); }
     catch { throw new Error('Não foi possível abrir o navegador do sistema. Verifique o navegador padrão.'); }
   }
+});
+handle('store:copy-link', id => {
+  const store = getStore(id);
+  const url = storeDownload(store) || store.website;
+  if (url) clipboard.writeText(url);
 });
 const linuxStore = provider => linuxStores.storeConfig(provider, app.getPath('userData'));
 async function refreshLinuxLibrary(provider, config) {
@@ -404,14 +418,28 @@ handle('game:add', async (_, window) => {
   }
   return state();
 });
-function protonGame(id) {
+function protonGame(id, includeSteam = true) {
   const game = getGame(id);
-  if (platform !== 'linux' || !isWindowsGame(game)) throw new Error('O Proton está disponível para jogos locais do Windows no Linux.');
+  if (platform !== 'linux' || !(isWindowsGame(game) || (includeSteam && game.appId))) {
+    throw new Error('A configuração de Proton está disponível no Linux.');
+  }
   return game;
 }
 
+async function steamProtonConfig() {
+  const roots = await getSteamRoots(platform, process.env, os.homedir());
+  return steamProton.findSteamConfig(roots, Boolean(detected.steam?.args.includes('com.valvesoftware.Steam')));
+}
+
 async function protonSettings(id) {
-  protonGame(id);
+  const game = protonGame(id);
+  if (game.appId) {
+    const config = await steamProtonConfig();
+    const tools = await steamProton.listSteamTools(config.root);
+    if (!tools.some(tool => tool.id === 'proton_experimental')) tools.unshift({ id: 'proton_experimental', name: 'Proton Experimental' });
+    return { steam: true, proton: steamProton.readSteamChoice(config.text, game.appId),
+      versions: tools.map(({ id, name }) => ({ path: id, name })) };
+  }
   const home = os.homedir();
   const steamRoots = await getSteamRoots(platform, process.env, home);
   if (data.apps.steam) steamRoots.unshift(path.dirname(data.apps.steam));
@@ -425,17 +453,23 @@ async function protonSettings(id) {
 handle('proton:settings', protonSettings);
 handle('proton:latest', id => { protonGame(id); return latestGEProton(); });
 handle('proton:help', id => {
-  protonGame(id);
+  protonGame(id, false);
   return openWebLink('https://github.com/Open-Wine-Components/umu-launcher#installation', shell);
 });
 handle('proton:add', async (id, window) => {
-  protonGame(id);
+  const game = protonGame(id);
   const result = await dialog.showOpenDialog(window, {
     title: translate('Selecionar pasta do Proton'), properties: ['openDirectory']
   });
   if (result.canceled) return protonSettings(id);
   const folder = result.filePaths[0];
   if (!await isProtonDirectory(folder)) throw new Error('Escolha a pasta que contém o arquivo proton.');
+  if (game.appId) {
+    const config = await steamProtonConfig();
+    const tool = await steamProton.addSteamTool(config.root, folder);
+    await steamProton.saveSteamChoice(config, game.appId, tool);
+    return protonSettings(id);
+  }
   await updateData(copy => {
     if (!copy.protonFolders.includes(folder)) copy.protonFolders.push(folder);
     copy.gameProton[id] = { ...copy.gameProton[id], proton: folder };
@@ -443,15 +477,20 @@ handle('proton:add', async (id, window) => {
   return protonSettings(id);
 });
 handle('proton:save', async ({ id, proton }) => {
-  protonGame(id);
-  if (proton !== 'GE-Proton' && !(await protonSettings(id)).versions.some(version => version.path === proton)) {
+  const game = protonGame(id);
+  const fallback = game.appId ? steamProton.defaultTool : 'GE-Proton';
+  if (proton !== fallback && !(await protonSettings(id)).versions.some(version => version.path === proton)) {
     throw new Error('A versão selecionada do Proton não foi encontrada.');
+  }
+  if (game.appId) {
+    await steamProton.saveSteamChoice(await steamProtonConfig(), game.appId, proton);
+    return protonSettings(id);
   }
   await updateData(copy => { copy.gameProton[id] = { ...copy.gameProton[id], proton }; });
   return protonSettings(id);
 });
 handle('proton:prefix', async ({ id, reset }, window) => {
-  protonGame(id);
+  protonGame(id, false);
   let prefix;
   if (!reset) {
     const result = await dialog.showOpenDialog(window, {
