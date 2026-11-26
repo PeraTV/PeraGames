@@ -729,7 +729,9 @@ function details(item) {
   body.append(el('p', '', item.description));
   const facts = el('dl');
   const platform = { win32: 'Windows', darwin: 'macOS' }[state.platform] || 'Linux';
-  const status = item.installed ? t('Disponível') : item.userAdded ? t('Executável indisponível') : item.available ? t('Não instalado') : t('Indisponível no {system}', { system: platform });
+  const status = item.installed ? t('Disponível') : item.userAdded ? t('Executável indisponível') :
+    item.available ? t('Não instalado') : item.windowsSetup ? t('Disponível via Wine ou Proton') :
+      t('Indisponível no {system}', { system: platform });
   for (const [term, value] of [[t('Sistema'), platform], [t('Fonte'), item.userAdded ? t('Atalho local') : item.available || item.installed ? item.downloadSource : '—'],
     [t('Estado'), status]]) {
     const row = el('div');
@@ -738,7 +740,8 @@ function details(item) {
   }
   body.append(facts);
   if (item.installed || item.available) {
-    const label = item.installed ? t(item.windowsShortcut ? 'Abrir com Wine' : item.id === 'wine' ? 'Configurar Wine' : 'Abrir') :
+    const label = item.installed ? t(item.configuredLauncher ? 'Abrir com Wine ou Proton' :
+      item.windowsShortcut ? 'Abrir com Wine' : item.id === 'wine' ? 'Configurar Wine' : 'Abrir') :
       state.platform === 'linux' ? t(item.id === 'epic' ? 'Baixar a prévia oficial' : 'Instalar no Linux') :
       t('Baixar para {system}', { system: platform });
     body.append(button(label, async node => {

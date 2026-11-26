@@ -407,6 +407,8 @@ A verificação do arquivo de Proton falhou.|Proton archive verification failed.
 Esta versão já está sendo instalada.|This version is already being installed.
 Configurar launcher de Windows|Set up Windows launcher
 Configurar com Wine ou Proton|Set up with Wine or Proton
+Disponível via Wine ou Proton|Available through Wine or Proton
+Abrir com Wine ou Proton|Open with Wine or Proton
 Editar Wine ou Proton|Edit Wine or Proton
 Baixar instalador do Windows ↗|Download Windows installer ↗
 Salvar em Lojas|Save to Stores
