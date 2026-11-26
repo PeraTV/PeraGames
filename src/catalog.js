@@ -25,13 +25,13 @@ const stores = [
   },
   {
     id: 'gog', name: 'GOG', category: 'Lojas', icon: 'gog',
-    description: 'Acesse sua biblioteca pelo GOG GALAXY. No Linux, use sua conta GOG no Heroic.',
+    description: 'Conecte sua conta GOG ou configure o GOG GALAXY para acessar sua biblioteca.',
     website: 'https://www.gog.com/', windowsUrl: 'https://www.gog.com/galaxy',
     windowsPaths: ['GOG Galaxy/GalaxyClient.exe']
   },
   {
     id: 'amazon', name: 'Amazon Games', category: 'Lojas', icon: 'amazon',
-    description: 'Acesse os jogos da Amazon. No Linux, abra sua biblioteca pelo Heroic.',
+    description: 'Conecte sua conta Amazon para acessar os jogos resgatados na sua biblioteca.',
     website: 'https://www.amazongames.com/', windowsUrl: 'https://www.amazongames.com/en-us/support/prime-gaming/articles/download-and-install-the-amazon-games-app',
     windowsPaths: ['Amazon Games/App/Amazon Games.exe']
   },

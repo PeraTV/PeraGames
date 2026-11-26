@@ -39,17 +39,22 @@ test('usa identificadores de aplicativos apenas de links do catálogo Flathub', 
   assert.equal(flathubId('https://flathub.org.other.test/apps/org.foo.bar'), undefined);
 });
 
-test('lista Proton oficial para baixar e encontra GE-Proton fora da instalação da Steam', async t => {
+test('lista Proton oficial, Proton-CachyOS e GE-Proton de outras instalações', async t => {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'peragames-proton-catalog-'));
   t.after(() => fs.rm(home, { recursive: true, force: true }));
   const root = path.join(home, 'Steam');
   const external = path.join(home, 'Segundo disco');
   const official = path.join(external, 'steamapps', 'common', 'Proton 10.0');
   const shared = path.join(home, '.local', 'share', 'umu', 'compatibilitytools', 'GE-Proton11-2');
+  const cachyos = path.join(root, 'compatibilitytools.d', 'proton-cachyos-slr');
   await fs.mkdir(path.join(root, 'steamapps'), { recursive: true });
   await fs.writeFile(path.join(root, 'steamapps', 'libraryfolders.vdf'), '"libraryfolders" { "1" { "path" ' +
     JSON.stringify(external) + ' } }');
-  for (const [folder, id, name] of [[official, 'proton_10', 'Proton 10.0-4'], [shared, 'GE-Proton11-2', 'GE-Proton 11-2']]) {
+  for (const [folder, id, name] of [
+    [official, 'proton_10', 'Proton 10.0-4'],
+    [shared, 'GE-Proton11-2', 'GE-Proton 11-2'],
+    [cachyos, 'proton-cachyos-slr', 'Proton-CachyOS (SLR)']
+  ]) {
     await fs.mkdir(folder, { recursive: true });
     await fs.writeFile(path.join(folder, 'proton'), '');
     await fs.writeFile(path.join(folder, 'compatibilitytool.vdf'),
@@ -57,13 +62,15 @@ test('lista Proton oficial para baixar e encontra GE-Proton fora da instalação
       ' { "install_path" "./" "display_name" ' + JSON.stringify(name) + ' } } }');
   }
   const local = await findProtonVersions({ home, steamRoots: [root] });
-  assert.deepEqual(new Set(local.map(version => version.path)), new Set([official, shared]));
+  assert.deepEqual(new Set(local.filter(version => version.path.startsWith(home)).map(version => version.path)),
+    new Set([official, shared, cachyos]));
   const tools = await listSteamTools(root, local);
   assert.deepEqual(tools.find(tool => tool.id === 'proton_10'), {
     id: 'proton_10', name: 'Proton 10.0-4', appId: '3658110', installed: true
   });
   assert.equal(tools.find(tool => tool.id === 'proton_11').installed, false);
   assert.equal(tools.find(tool => tool.id === 'GE-Proton11-2').folder, shared);
+  assert.equal(tools.find(tool => tool.id === 'proton-cachyos-slr').installed, true);
 });
 
 test('grava a escolha da Steam atomicamente e mantém o backup', { skip: process.platform !== 'linux' }, async t => {

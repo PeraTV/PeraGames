@@ -285,8 +285,8 @@ function storeLibraryCard(game) {
     art.append(image);
   }
   const info = el('div', 'game-info');
-  info.append(el('h3', '', game.name),
-    el('p', '', (game.provider === 'gog' ? 'GOG' : 'Epic Games') + ' · ' + t('Não instalado')));
+  const source = { epic: 'Epic Games', gog: 'GOG', amazon: 'Amazon Games' }[game.provider];
+  info.append(el('h3', '', game.name), el('p', '', source + ' · ' + t('Não instalado')));
   const install = button(t('Instalar jogo'), async node => {
     node.textContent = t('Instalando…');
     await perform(node, async () => {
@@ -442,6 +442,86 @@ async function changeProton(action) {
   }
 }
 
+let protonCatalogPage = 0;
+let protonCatalogRows = [];
+let protonCatalogMore = false;
+let protonCatalogBusy = false;
+let downloadingProton;
+const protonCatalogStatus = () => byId('proton-catalog-status');
+
+function renderProtonCatalog() {
+  byId('proton-catalog-source').disabled = protonCatalogBusy;
+  const more = byId('proton-catalog-more');
+  more.hidden = !protonCatalogMore;
+  more.disabled = protonCatalogBusy;
+  byId('proton-catalog-entries').replaceChildren(...protonCatalogRows.map(item => {
+    const row = el('div', 'proton-catalog-entry');
+    const size = Math.round(item.size / (1024 * 1024));
+    const action = button(t(item.installed ? 'Instalado' : 'Instalar'), () => installCatalogProton(item), 'button');
+    action.disabled = item.installed || protonCatalogBusy;
+    row.append(el('span', '', item.name + ' · ' + size + ' MiB'), action);
+    return row;
+  }));
+}
+
+async function loadProtonCatalog(reset = false) {
+  if (protonCatalogBusy) return;
+  if (reset) {
+    protonCatalogPage = 0;
+    protonCatalogRows = [];
+    protonCatalogMore = false;
+  }
+  const source = byId('proton-catalog-source').value;
+  protonCatalogBusy = true;
+  renderProtonCatalog();
+  protonCatalogStatus().textContent = t('Consultando…');
+  try {
+    const { entries, next } = await api.protonCatalog({ source, page: protonCatalogPage + 1 });
+    protonCatalogPage += 1;
+    protonCatalogRows.push(...entries.filter(entry => !protonCatalogRows.some(row => row.id === entry.id)));
+    protonCatalogMore = next;
+    protonCatalogStatus().textContent = protonCatalogRows.length ? '' : t('Nenhuma versão encontrada para este sistema.');
+  } catch (error) {
+    protonCatalogStatus().textContent = t(error.message);
+  } finally {
+    protonCatalogBusy = false;
+    renderProtonCatalog();
+  }
+}
+
+function openProtonCatalog() {
+  byId('proton-catalog-dialog').showModal();
+  if (!downloadingProton) loadProtonCatalog(true);
+}
+
+function refreshInstalledProton() {
+  if (byId('game-setup-dialog').open && !setupBusy) {
+    const current = byId('game-setup-runner').value;
+    return setupAction(async () => ({ ...await api.gameSetupRunners(), selectedRunner: current }));
+  }
+  if (byId('game-editor').open && byId('game-proton').open) return changeProton(api.protonSettings);
+}
+
+async function installCatalogProton(item) {
+  if (protonCatalogBusy) return;
+  downloadingProton = item.id;
+  protonCatalogBusy = true;
+  renderProtonCatalog();
+  protonCatalogStatus().textContent = t('Preparando download…');
+  try {
+    await api.installProtonRelease(item.id);
+    item.installed = true;
+    protonCatalogStatus().textContent = t('Proton instalado. Selecione a versão no jogo ou launcher.');
+    await refreshInstalledProton();
+  } catch (error) {
+    protonCatalogStatus().textContent = t(error.message);
+  } finally {
+    downloadingProton = undefined;
+    protonCatalogBusy = false;
+    renderProtonCatalog();
+  }
+}
+
 function showGameDetails(game) {
   selectedGame = game.id;
   byId('game-feedback').hidden = true;
@@ -472,6 +552,8 @@ function setupIsWindows() { return byId('game-setup-platform').value === 'window
 
 function renderGameSetup() {
   const windows = setupIsWindows();
+  byId('game-setup-platform').disabled = setupBusy || Boolean(gameSetup?.launcher);
+  byId('game-setup-save').textContent = t(gameSetup?.launcher ? 'Salvar em Lojas' : 'Salvar na biblioteca');
   byId('game-setup-windows').hidden = !windows;
   byId('game-setup-install').hidden = !windows;
   byId('game-setup-save').disabled = setupBusy || !gameSetup?.file;
@@ -518,15 +600,15 @@ function addGameFromLibrary(node) {
   openGameSetup();
 }
 
-function openGameSetup(id) {
+function openGameSetup(id, storeId) {
   gameSetup = undefined;
   byId('game-setup-form').reset();
-  byId('game-setup-title').textContent = t(id ? 'Editar inicialização' : 'Adicionar jogo ou aplicativo');
+  byId('game-setup-title').textContent = t(storeId ? 'Configurar launcher de Windows' : id ? 'Editar inicialização' : 'Adicionar jogo ou aplicativo');
   byId('game-setup-runner').replaceChildren();
   renderGameSetup();
   byId('game-setup-dialog').showModal();
   setupAction(async () => {
-    const setup = await api.startGameSetup(id);
+    const setup = await api.startGameSetup({ id, storeId });
     byId('game-setup-platform').value = setup.windows === false ? 'linux' : 'windows';
     byId('game-setup-name').value = setup.title || '';
     byId('game-setup-args').value = setup.argumentsText || '';
@@ -667,16 +749,16 @@ function details(item) {
     }, 'button primary launch'));
   }
   if (state.platform === 'linux') {
-    if (['epic', 'gog'].includes(item.id)) {
-      body.append(button(t('Conectar conta no PeraGames'), () => openLinuxStoreLibrary(item), 'button'));
-    }
     if (['epic', 'gog', 'amazon'].includes(item.id) || item.amazonInstaller) {
-      const account = item.id === 'epic' ? 'Epic Games' : item.id === 'gog' ? 'GOG' : 'Amazon';
-      const source = item.amazonInstaller ? 'amazon' : item.id;
-      const installed = state.stores.some(store => store.id === 'heroic' && store.installed);
-      body.append(button(t(installed ? 'Abrir no Heroic' : 'Instalar e abrir o Heroic'), node =>
-        perform(node, () => api.openHeroic(source)), 'button'));
-      body.append(el('p', '', t('No Heroic, abra Gerenciar contas e entre com a conta {name}.', { name: account })));
+      const store = item.amazonInstaller ? state.stores.find(store => store.id === 'amazon') : item;
+      body.append(button(t('Conectar conta no PeraGames'), () => openLinuxStoreLibrary(store), 'button'));
+    }
+    if (item.windowsSetup) {
+      body.append(button(t(item.configuredLauncher ? 'Editar Wine ou Proton' : 'Configurar com Wine ou Proton'),
+        () => openGameSetup(undefined, item.id), 'button'));
+    }
+    if (item.windowsInstaller) {
+      body.append(button(t('Baixar instalador do Windows ↗'), node => perform(node, () => api.openWindowsInstaller(item.id)), 'plain'));
     }
     if (item.windowsShortcut) {
       body.append(button(t('Testar teclado no Wine'), node => perform(node, async () => {
@@ -685,7 +767,7 @@ function details(item) {
       }), 'button'));
     }
     if (item.amazonInstaller) {
-      body.append(el('p', '', t('Este é o instalador da Amazon para Windows. Se o teclado funcionar no Bloco de Notas do Wine e travar no login, tente acessar sua biblioteca pelo Heroic.')));
+      body.append(el('p', '', t('Se o login do instalador travar no Wine, conecte sua conta Amazon pelo PeraGames.')));
     }
   }
   const links = el('div', 'detail-links');
@@ -707,6 +789,7 @@ function details(item) {
 }
 
 let storeDialogProvider;
+let storeDialogCommand;
 let storeDialogGames = [];
 let storeDialogBusy = false;
 
@@ -762,16 +845,22 @@ function openLinuxStoreLibrary(item) {
   byId('linux-store-account').hidden = true;
   byId('linux-store-setup').hidden = true;
   byId('linux-store-system').hidden = true;
+  byId('linux-store-tool').hidden = true;
+  byId('linux-store-amazon-help').hidden = item.id !== 'amazon';
   renderLinuxStoreGames();
   byId('linux-store-dialog').showModal();
-  storeDialogAction(async provider => {
-    const { ready } = await api.linuxStoreInfo(provider);
-    byId('linux-store-account').hidden = !ready;
-    byId('linux-store-setup').hidden = ready;
-    byId('linux-store-system').hidden = ready;
-    if (!ready) throw new Error(t('Instale {tool} no Linux e abra esta janela novamente.', { tool: provider === 'gog' ? 'gogdl' : 'legendary' }));
-    return api.linuxStoreLibrary(provider);
-  });
+  storeDialogAction(loadLinuxStoreLibrary);
+}
+
+async function loadLinuxStoreLibrary(provider) {
+  const { ready, commandName } = await api.linuxStoreInfo(provider);
+  storeDialogCommand = commandName;
+  byId('linux-store-account').hidden = !ready;
+  byId('linux-store-setup').hidden = ready;
+  byId('linux-store-system').hidden = ready;
+  byId('linux-store-tool').hidden = ready;
+  if (!ready) throw new Error(t('Instale ou vincule o componente {tool} para conectar a conta.', { tool: commandName }));
+  return api.linuxStoreLibrary(provider);
 }
 
 function renderCatalog() {
@@ -1362,7 +1451,7 @@ byId('add-game').addEventListener('click', event => addGameFromLibrary(event.cur
 byId('library-install-filter').addEventListener('change', render);
 byId('game-accounts').addEventListener('click', () => {
   const dialog = byId('game-accounts-dialog');
-  const options = state.stores.filter(store => ['epic', 'gog'].includes(store.id)).map(store => {
+  const options = state.stores.filter(store => ['epic', 'gog', 'amazon'].includes(store.id)).map(store => {
     const connected = Object.hasOwn(state.ownedStoreGames || {}, store.id);
     return button(store.name + ' · ' + t(connected ? 'Sincronizar' : 'Conectar'), () => {
       dialog.close();
@@ -1564,7 +1653,10 @@ byId('linux-store-close').addEventListener('click', () => byId('linux-store-dial
 byId('linux-store-search').addEventListener('input', renderLinuxStoreGames);
 byId('linux-store-setup').addEventListener('click', () => storeDialogAction(provider => api.openLinuxStore({ provider, setup: true })));
 byId('linux-store-system').addEventListener('click', () =>
-  storeDialogAction(provider => api.openLinuxSoftware(provider === 'gog' ? 'gogdl' : 'legendary')));
+  storeDialogAction(() => api.openLinuxSoftware(storeDialogCommand)));
+byId('linux-store-tool').addEventListener('click', () => storeDialogAction(async provider => {
+  if (await api.linkLinuxStoreTool(provider)) return loadLinuxStoreLibrary(provider);
+}));
 byId('linux-store-login').addEventListener('click', async () => {
   await storeDialogAction(provider => api.openLinuxStore({ provider }));
   if (!byId('linux-store-status').textContent) byId('linux-store-status').textContent = t('Cole o retorno que apareceu após entrar na conta.');
@@ -1594,7 +1686,16 @@ byId('proton-version').addEventListener('change', event => {
   changeProton(id => api.protonSave({ id, proton }));
 });
 byId('proton-add').addEventListener('click', () => changeProton(api.protonAdd));
-byId('proton-releases').addEventListener('click', () => changeProton(api.protonReleases));
+byId('proton-manager').addEventListener('click', openProtonCatalog);
+byId('game-setup-proton-manager').addEventListener('click', openProtonCatalog);
+byId('proton-catalog-close').addEventListener('click', () => byId('proton-catalog-dialog').close());
+byId('proton-catalog-source').addEventListener('change', () => loadProtonCatalog(true));
+byId('proton-catalog-more').addEventListener('click', () => loadProtonCatalog());
+api.onProtonProgress?.(({ id, stage, received, total }) => {
+  if (downloadingProton !== id) return;
+  protonCatalogStatus().textContent = stage === 'extract' ? t('Extraindo Proton…') :
+    t('Baixando Proton… {percent}%', { percent: Math.floor(received * 100 / total) });
+});
 byId('proton-download').addEventListener('click', () => {
   const toolId = byId('proton-download-version').value;
   changeProton(id => api.protonSteamDownload({ id, toolId }));

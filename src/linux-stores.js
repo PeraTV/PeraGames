@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('node:fs/promises');
+const { constants } = require('node:fs');
 const path = require('node:path');
 const { findLinuxCommand, runHostTool, launch, fileExists } = require('./system');
 
@@ -12,14 +13,18 @@ const providers = {
   gog: {
     tool: 'gogdl', setup: 'https://github.com/Heroic-Games-Launcher/heroic-gogdl#contributing',
     login: 'https://auth.gog.com/auth?client_id=46899977096215655&redirect_uri=https%3A%2F%2Fembed.gog.com%2Fon_login_success%3Forigin%3Dclient&response_type=code&layout=client2'
+  },
+  amazon: {
+    tool: 'nile', setup: 'https://github.com/imLinguin/nile/releases'
   }
 };
 const storeError = 'A loja não respondeu. Confira o login e tente novamente.';
+const amazonSessions = new Map();
 
 function storeCover(value) {
   if (typeof value !== 'string') return undefined;
   const url = value.startsWith('//') ? 'https:' + value : value;
-  return /^https:\/\/[a-z0-9.-]+\.(?:epicgames\.com|unrealengine\.com|gog-statics\.com)\//i.test(url) ? url : undefined;
+  return /^https:\/\/(?:m\.media-amazon\.com|[a-z0-9.-]+\.(?:epicgames\.com|unrealengine\.com|gog-statics\.com))\//i.test(url) ? url : undefined;
 }
 
 function storeGameId(provider, id) {
@@ -33,22 +38,29 @@ function loginCode(provider, input) {
   } else if (provider === 'gog' && value.startsWith('https://')) {
     const url = new URL(value);
     value = url.origin === 'https://embed.gog.com' && url.pathname === '/on_login_success' ? url.searchParams.get('code') : '';
+  } else if (provider === 'amazon' && value.startsWith('https://')) {
+    const url = new URL(value);
+    value = ['https://amazon.com', 'https://www.amazon.com'].includes(url.origin)
+      ? url.searchParams.get('openid.oa2.authorization_code') : '';
   }
   if (typeof value !== 'string' || !/^[A-Za-z0-9_.~-]{12,300}$/.test(value)) throw new Error('Código de login inválido.');
   return value;
 }
 
-async function storeConfig(provider, root) {
+async function storeConfig(provider, root, linked) {
   if (process.platform !== 'linux' || !Object.hasOwn(providers, provider)) throw new Error('Loja indisponível neste sistema.');
   const config = providers[provider];
-  const tool = await findLinuxCommand(config.tool, process.env);
-  if (!tool) return { ...config, ready: false };
+  const commandName = config.tool;
+  const custom = await fileExists(linked) && await fs.access(linked, constants.X_OK).then(() => true, () => false);
+  const tool = custom ? linked : await findLinuxCommand(commandName, process.env);
+  if (!tool) return { ...config, commandName, ready: false };
   const dir = path.join(root, 'stores', provider);
   await fs.mkdir(dir, { recursive: true, mode: 0o700 });
   return {
-    ...config, tool, ready: true,
+    ...config, tool, dir, commandName, ready: true,
     baseArgs: provider === 'gog' ? ['--auth-config-path', path.join(dir, 'auth.json')] : [],
-    environment: provider === 'gog' ? { GOGDL_CONFIG_PATH: dir } : { LEGENDARY_CONFIG_PATH: dir }
+    environment: provider === 'gog' ? { GOGDL_CONFIG_PATH: dir } :
+      provider === 'amazon' ? { NILE_CONFIG_PATH: dir } : { LEGENDARY_CONFIG_PATH: dir }
   };
 }
 
@@ -109,6 +121,24 @@ async function gogLibrary(config, cached = []) {
 
 async function library(provider, config, cached) {
   if (provider === 'gog') return gogLibrary(config, cached);
+  if (provider === 'amazon') {
+    await command(config, ['library', 'sync'], false);
+    const owned = await command(config, ['library', 'list', '--json']);
+    const installedFile = path.join(config.dir, 'nile', 'installed.json');
+    const installed = await fs.readFile(installedFile, 'utf8').then(JSON.parse, error => {
+      if (error.code !== 'ENOENT') throw error;
+      return [];
+    });
+    const folders = new Map(installed.map(item => [item.id, item.path]));
+    return Promise.all(owned.filter(item => storeGameId(provider, item.product?.id) && typeof item.product.title === 'string')
+      .map(async ({ product }) => {
+        const folder = folders.get(product.id);
+        const detail = product.productDetail;
+        return { id: product.id, name: product.title, installed: Boolean(typeof folder === 'string' &&
+          await fileExists(path.join(folder, 'fuel.json'))),
+          cover: storeCover(detail?.details?.backgroundUrl2 || detail?.iconUrl) };
+      }));
+  }
   const owned = await command(config, ['list', '--json']);
   const installed = await command(config, ['list-installed', '--json']);
   const installedIds = new Set(installed.map(game => game.app_name));
@@ -123,7 +153,25 @@ async function library(provider, config, cached) {
 async function connect(provider, config, input) {
   const code = loginCode(provider, input);
   if (provider === 'gog') await gogCredentials(config, code);
+  else if (provider === 'amazon') {
+    const session = amazonSessions.get(config.dir);
+    amazonSessions.delete(config.dir);
+    if (!session || session.expires < Date.now()) throw new Error('Abra o login da Amazon novamente.');
+    await command(config, ['register', '--code', code, '--client-id', session.client_id,
+      '--code-verifier', session.code_verifier, '--serial', session.serial], false);
+  }
   else await command(config, ['auth', '--code', code], false);
+}
+
+async function loginUrl(provider, config) {
+  if (provider !== 'amazon') return config.login;
+  const session = await command(config, ['auth', '--login', '--non-interactive']);
+  const url = typeof session?.url === 'string' && URL.canParse(session.url) ? new URL(session.url) : null;
+  if (!url || !['https://amazon.com', 'https://www.amazon.com'].includes(url.origin) || url.pathname !== '/ap/signin' ||
+      !/^[a-f0-9]{32,160}$/i.test(session.client_id) || !/^[\w-]{32,128}$/.test(session.code_verifier) ||
+      !/^[a-f0-9]{32}$/i.test(session.serial)) throw new Error(storeError);
+  amazonSessions.set(config.dir, { ...session, expires: Date.now() + 600000 });
+  return url.href;
 }
 
 async function gogGameFolder(root, id) {
@@ -137,7 +185,8 @@ async function gogGameFolder(root, id) {
 async function install(provider, config, id, folder) {
   const args = provider === 'gog'
     ? ['download', id, '--platform', 'windows', '--path', folder, '--with-dlcs']
-    : ['-y', 'install', id, ...(folder ? ['--base-path', folder] : []), '--skip-dlcs'];
+    : provider === 'amazon' ? ['install', id, ...(folder ? ['--base-path', folder] : [])]
+      : ['-y', 'install', id, ...(folder ? ['--base-path', folder] : []), '--skip-dlcs'];
   try {
     await launch(config.tool, [...config.baseArgs, ...args], { environment: config.environment, wait: true });
     if (provider === 'gog') {
@@ -157,4 +206,4 @@ function play(provider, config, { id, folder, umu, environment }) {
   });
 }
 
-module.exports = { storeConfig, storeGameId, loginCode, library, connect, install, play };
+module.exports = { storeConfig, storeGameId, loginCode, loginUrl, library, connect, install, play };

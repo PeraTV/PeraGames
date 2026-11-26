@@ -375,10 +375,6 @@ Digite o nome do aplicativo para buscar na loja do Linux.|Enter an app name to s
 Nenhuma loja compatível foi detectada. Use Big Store, GNOME Software, Discover ou Pamac.|No compatible software center was found. Use Big Store, GNOME Software, Discover, or Pamac.
 Conectar conta no PeraGames|Connect account in PeraGames
 Baixar a prévia oficial|Download the official preview
-Abrir no Heroic|Open in Heroic
-Instalar e abrir o Heroic|Install and open Heroic
-No Heroic, abra Gerenciar contas e entre com a conta {name}.|In Heroic, open Manage Accounts and sign in with your {name} account.
-O Heroic não foi encontrado após a instalação.|Heroic was not found after installation.
 Abrir com Wine|Open with Wine
 Configurar Wine|Configure Wine
 Testar teclado no Wine|Test keyboard in Wine
@@ -386,11 +382,34 @@ Instale o Wine em Lojas → Ferramentas para abrir este executável.|Install Win
 O aplicativo não abriu pelo Wine. Use Testar teclado no Wine para verificar a compatibilidade.|The app failed to open in Wine. Use Test Keyboard in Wine to check compatibility.
 Executável do Windows indisponível.|Windows executable unavailable.
 {version}. Digite no Bloco de Notas para verificar o teclado.|{version}. Type in Notepad to test the keyboard.
-Este é o instalador da Amazon para Windows. Se o teclado funcionar no Bloco de Notas do Wine e travar no login, tente acessar sua biblioteca pelo Heroic.|This is Amazon's Windows installer. If typing works in Wine Notepad but fails at sign-in, try accessing your library through Heroic.
+Se o login do instalador travar no Wine, conecte sua conta Amazon pelo PeraGames.|If the installer sign-in hangs in Wine, connect your Amazon account through PeraGames.
+Abra o login da Amazon novamente.|Open Amazon sign-in again.
+Entre no site oficial da Amazon e cole a URL final do navegador abaixo.|Sign in on the official Amazon site and paste the final browser URL below.
+Conecte sua conta GOG ou configure o GOG GALAXY para acessar sua biblioteca.|Connect your GOG account or set up GOG GALAXY to access your library.
+Conecte sua conta Amazon para acessar os jogos resgatados na sua biblioteca.|Connect your Amazon account to access the games you have claimed.
+Selecionar componente da loja|Select store component
+Vincular componente da loja|Link store component
+Instale ou vincule o componente {tool} para conectar a conta.|Install or link the {tool} component to connect your account.
 {name} · disponível para baixar|{name} · available to download
 {name} · adicionar à Steam|{name} · add to Steam
 Feche a Steam antes de salvar. Para instalar uma versão oficial, use Baixar pela Steam.|Exit Steam before saving. To install an official version, use Download via Steam.
-Versões do GE-Proton|GE-Proton releases
+Gerenciar Proton|Manage Proton
+Família do Proton|Proton family
+Carregar mais versões|Load more versions
+Nenhuma versão encontrada para este sistema.|No releases found for this system.
+Preparando download…|Preparing download…
+Baixando Proton… {percent}%|Downloading Proton… {percent}%
+Extraindo Proton…|Extracting Proton…
+Proton instalado. Selecione a versão no jogo ou launcher.|Proton installed. Select the version for your game or launcher.
+Não foi possível consultar as versões de Proton.|Could not retrieve the Proton versions.
+Não foi possível instalar esta versão do Proton.|Could not install this Proton version.
+A verificação do arquivo de Proton falhou.|Proton archive verification failed.
+Esta versão já está sendo instalada.|This version is already being installed.
+Configurar launcher de Windows|Set up Windows launcher
+Configurar com Wine ou Proton|Set up with Wine or Proton
+Editar Wine ou Proton|Edit Wine or Proton
+Baixar instalador do Windows ↗|Download Windows installer ↗
+Salvar em Lojas|Save to Stores
 Versões para baixar pela Steam|Versions available in Steam
 Baixar pela Steam|Download via Steam`.split('\n').map(line => line.split('|')));
 

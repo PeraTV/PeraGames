@@ -12,6 +12,7 @@ const { getSteamRoots, steamGames, detectStores, fileExists, launch, isMacBundle
 const { isWindowsGame, isProtonDirectory, findProtonVersions, findWineVersions, latestGEProton, windowsRunner } = require('./proton');
 const linuxStores = require('./linux-stores');
 const steamProton = require('./steam-proton');
+const protonCatalog = require('./proton-catalog');
 const { browseSteam, steamAssets, lookupGame, cleanTitle, featuredSteamArt } = require('./game-info');
 const { romArtwork } = require('./rom-art');
 const { loginFlag, setTvLogin } = require('./tv-startup');
@@ -25,6 +26,8 @@ const { createUpdater } = require('./app-update');
 const updater = createUpdater({ app, shell, version, repository: updateRepository });
 
 const platform = process.platform;
+const windowsLaunchers = new Set(['epic', 'gog', 'amazon', 'battle', 'ea', 'ubisoft']);
+const managedProtonRoot = () => path.join(app.getPath('userData'), 'proton');
 const isAmazonInstaller = file => /^amazongamessetup(?: ?\(\d+\))?\.exe$/i.test(path.basename(file || ''));
 const storeDownload = ({ id, windowsUrl, linuxUrl, website }) =>
   platform === 'win32' ? windowsUrl : platform === 'darwin' ? (macApps[id] ? website || windowsUrl : '') : linuxUrl;
@@ -32,7 +35,7 @@ const runnable = async file => await fileExists(file) || (platform === 'darwin' 
 const emptyData = () => ({
   games: [], roms: [], apps: {}, favorites: [], played: {}, featured: null, customStores: [],
   gameCovers: {}, gameBackdrops: {}, gameDetails: {}, steamPrograms: [],
-  gameProton: {}, protonFolders: [], ownedStoreGames: {},
+  gameProton: {}, protonFolders: [], ownedStoreGames: {}, storeTools: {},
   tv: { openOnLaunch: false, atLogin: false, layout: 'cinema', layoutRevision: 1 },
   dolphinPassthrough: false
 });
@@ -95,6 +98,8 @@ function getStore(id) {
   if (!store) throw new Error('Aplicativo desconhecido.');
   return store;
 }
+
+const storeLauncher = id => data.games.find(game => game.launcher === id);
 
 function getGame(id) {
   const game = [...data.games, ...installedGames, ...data.roms].find(item => item.id === id);
@@ -171,7 +176,7 @@ function state() {
   };
   return {
     platform,
-    games: [...data.games, ...installedGames].map(gameState),
+    games: [...data.games.filter(game => !game.launcher), ...installedGames].map(gameState),
     ownedStoreGames: platform === 'linux' ? data.ownedStoreGames : {},
     roms: data.roms.map(gameState),
     featured: data.featured,
@@ -181,12 +186,16 @@ function state() {
     stores: catalog().filter(item => item.id !== 'wine' || platform === 'linux')
       .map(({ id, name, category, description, icon, windowsUrl, linuxUrl, website, systems, userAdded, steamAppId }) => {
       const download = storeDownload({ id, windowsUrl, linuxUrl, website });
+      const launcher = storeLauncher(id);
       const fromSteam = steamAppId || (id === 'obs' && installedPrograms.some(item => item.appId === '1905180'));
       return {
-        id, name: userAdded ? name : translate(name), category, description: translate(description), icon, systems: translate(systems), userAdded, installed: Boolean(detected[id] || fromSteam),
+        id, name: userAdded ? name : translate(name), category, description: translate(description), icon, systems: translate(systems), userAdded, installed: Boolean(launcher || detected[id] || fromSteam),
         executableIcon: executableIcons.get(detected[id]?.file),
         custom: Boolean(data.apps[id]), available: Boolean(download), website: Boolean(website || download),
-        windowsShortcut: platform === 'linux' && /\.exe$/i.test(data.apps[id] || ''),
+        windowsShortcut: platform === 'linux' && !launcher && /\.exe$/i.test(data.apps[id] || ''),
+        windowsSetup: platform === 'linux' && (windowsLaunchers.has(id) || userAdded && /\.exe$/i.test(data.apps[id] || '')),
+        windowsInstaller: platform === 'linux' && windowsLaunchers.has(id) && Boolean(windowsUrl),
+        configuredLauncher: Boolean(launcher),
         amazonInstaller: platform === 'linux' && isAmazonInstaller(data.apps[id]),
         canInstallFlatpak: platform === 'linux' && Boolean(flathubId(download)),
         downloadSource: fromSteam && !detected[id] ? 'Steam' : id === 'wine' ? translate('Loja do Linux') :
@@ -307,18 +316,10 @@ handle('store:download', async id => {
   catch { throw new Error('Não foi possível abrir o navegador do sistema. Verifique o navegador padrão.'); }
 });
 handle('store:system-search', query => openLinuxSoftware(query));
-handle('store:heroic', async id => {
-  if (platform !== 'linux' || !['epic', 'gog', 'amazon'].includes(id)) throw new Error('Loja desconhecida.');
-  await scan();
-  const heroic = detected.heroic;
-  if (!heroic) {
-    await installFlatpak('com.heroicgameslauncher.hgl');
-    await scan();
-  }
-  const target = detected.heroic;
-  if (!target) throw new Error('O Heroic não foi encontrado após a instalação.');
-  await launch(target.file, target.args);
-  return state();
+handle('store:windows-installer', id => {
+  const store = getStore(id);
+  if (platform !== 'linux' || !windowsLaunchers.has(id) || !store.windowsUrl) throw new Error('Loja desconhecida.');
+  return openWebLink(store.windowsUrl, shell);
 });
 handle('store:website', async id => {
   const store = getStore(id);
@@ -333,7 +334,7 @@ handle('store:copy-link', id => {
   const url = storeDownload(store) || store.website;
   if (url) clipboard.writeText(url);
 });
-const linuxStore = provider => linuxStores.storeConfig(provider, app.getPath('userData'));
+const linuxStore = provider => linuxStores.storeConfig(provider, app.getPath('userData'), data.storeTools[provider]);
 async function refreshLinuxLibrary(provider, config) {
   const games = await linuxStores.library(provider, config, data.ownedStoreGames[provider]);
   const localGames = data.games.filter(game => game.store === provider);
@@ -348,10 +349,11 @@ async function refreshLinuxLibrary(provider, config) {
   await updateData(copy => {
     copy.ownedStoreGames[provider] = entries;
     copy.games = copy.games.filter(game => game.store !== provider || installedByStore.has(game.storeId));
-    if (provider === 'epic') {
+    if (provider === 'epic' || provider === 'amazon') {
+      const source = provider === 'epic' ? 'Epic Games' : 'Amazon Games';
       const added = entries.filter(game => game.installed && !installed.has(game.id));
       copy.games.push(...added.map(game => ({
-        id: 'epic-' + game.id, name: game.name, source: 'Epic Games', store: provider, storeId: game.id
+        id: provider + '-' + game.id, name: game.name, source, store: provider, storeId: game.id
       })));
     }
   });
@@ -365,10 +367,19 @@ async function withStore(provider, action) {
   finally { storeOperations.delete(provider); }
 }
 
-handle('linux-store:info', async provider => ({ ready: (await linuxStore(provider)).ready }));
+handle('linux-store:info', async provider => {
+  const { ready, commandName } = await linuxStore(provider);
+  return { ready, commandName };
+});
+handle('linux-store:link-tool', async (provider, window) => {
+  await linuxStore(provider);
+  const file = await selectExecutable(window, 'Selecionar componente da loja');
+  if (file) await updateData(copy => { copy.storeTools[provider] = file; });
+  return Boolean(file);
+});
 handle('linux-store:open', async ({ provider, setup }) => {
   const config = await linuxStore(provider);
-  return openWebLink(setup ? config.setup : config.login, shell);
+  return openWebLink(setup ? config.setup : await linuxStores.loginUrl(provider, config), shell);
 });
 handle('linux-store:library', provider => withStore(provider, config => refreshLinuxLibrary(provider, config)));
 handle('linux-store:connect', ({ provider, code }) => withStore(provider, async config => {
@@ -396,8 +407,10 @@ handle('linux-store:install', async ({ provider, id }, window) => withStore(prov
   });
   return refreshLinuxLibrary(provider, config);
 }));
-handle('store:open', async id => {
+handle('store:open', async (id, window) => {
   const store = getStore(id);
+  const launcher = storeLauncher(id);
+  if (platform === 'linux' && launcher) return playGame(launcher.id, window);
   await scan();
   const target = detected[id];
   const steamId = store.steamAppId || (id === 'obs' && installedPrograms.some(game => game.appId === '1905180') ? '1905180' : '');
@@ -438,7 +451,15 @@ handle('store:unlink', async id => {
   const store = getStore(id);
   await updateData(copy => {
     delete copy.apps[id];
-    if (store.userAdded) copy.customStores = copy.customStores.filter(item => item.id !== id);
+    if (store.userAdded) {
+      copy.customStores = copy.customStores.filter(item => item.id !== id);
+      const launcher = copy.games.find(game => game.launcher === id);
+      if (launcher) {
+        copy.games = copy.games.filter(game => game.id !== launcher.id);
+        delete copy.gameProton[launcher.id];
+        delete copy.gameCovers[launcher.id];
+      }
+    }
   });
   await scan();
   return state();
@@ -486,7 +507,7 @@ async function localRunners() {
   const steamRoots = await getSteamRoots(platform, process.env, home);
   if (data.apps.steam) steamRoots.unshift(path.dirname(data.apps.steam));
   const [proton, wine, umu] = await Promise.all([
-    findProtonVersions({ home, steamRoots, custom: data.protonFolders }),
+    findProtonVersions({ home, steamRoots, custom: data.protonFolders, managed: managedProtonRoot() }),
     findWineVersions(home),
     findLinuxCommand('umu-run', process.env)
   ]);
@@ -553,12 +574,20 @@ async function withLaunchTools(file, args, game) {
   return { file, args };
 }
 
-handle('game-setup:start', async (id, window) => {
+handle('game-setup:start', async ({ id, storeId } = {}, window) => {
   if (platform !== 'linux') throw new Error('A configuração de Proton está disponível no Linux.');
-  const game = id ? getGame(id) : null;
+  const store = storeId ? getStore(storeId) : null;
+  if (store && !(windowsLaunchers.has(storeId) || store.userAdded && /\.exe$/i.test(data.apps[storeId] || ''))) {
+    throw new Error('Executável do Windows indisponível.');
+  }
+  const game = store ? storeLauncher(storeId) : id ? getGame(id) : null;
   if (game && (game.appId || game.emulator || game.store)) throw new Error('Este jogo tem configurações gerenciadas pela sua biblioteca de origem.');
-  const setup = { id: game?.id || randomUUID(), edit: Boolean(game) };
+  const setup = { id: game?.id || (store ? 'launcher-' + store.id : randomUUID()), edit: Boolean(game) };
   setup.defaultPrefix = defaultWinePrefix(setup.id);
+  if (store) {
+    setup.launcher = store.id;
+    setup.title = store.name;
+  }
   if (game) {
     const compatibility = data.gameProton[game.id] || {};
     setup.title = game.name;
@@ -573,7 +602,15 @@ handle('game-setup:start', async (id, window) => {
   }
   gameSetups.set(window, setup);
   const windows = !game || Boolean(setup.windowsFile);
-  return { ...gameSetupView(setup, windows), windows, ...await localRunners() };
+  const runners = await localRunners();
+  if (store && !setup.selectedRunner && runners.versions.some(version => version.path === 'wine-system')) {
+    setup.selectedRunner = 'wine-system';
+  }
+  return { ...gameSetupView(setup, windows), windows, ...runners };
+});
+handle('game-setup:runners', async (_, window) => {
+  getGameSetup(window);
+  return localRunners();
 });
 handle('game-setup:pick', async ({ kind, windows }, window) => {
   const setup = getGameSetup(window);
@@ -622,6 +659,7 @@ handle('game-setup:install', async ({ runner }, window) => {
 });
 handle('game-setup:save', async ({ title, windows, runner, argumentsText, mangoHud, gameMode }, window) => {
   const setup = getGameSetup(window);
+  if (setup.launcher && !windows) throw new Error('Selecione um aplicativo com extensão .exe.');
   const file = windows ? setup.windowsFile : setup.linuxFile;
   if (!await fileExists(file)) throw new Error('Escolha o executável que deve abrir o jogo.');
   if (windows) {
@@ -636,7 +674,8 @@ handle('game-setup:save', async ({ title, windows, runner, argumentsText, mangoH
     if (copy.games.some(game => game.id !== setup.id && samePath(game.file, file))) throw new Error('Este jogo já está na biblioteca.');
     const name = (typeof title === 'string' && title.trim().slice(0, 160)) || path.parse(file).name;
     const args = typeof argumentsText === 'string' ? argumentsText.slice(0, 2048).split(/\r?\n/).filter(arg => arg.trim() && !arg.includes('\0')) : [];
-    const entry = { id: setup.id, file, name, source: 'Local', args, mangoHud: mangoHud === true, gameMode: gameMode === true };
+    const entry = { id: setup.id, file, name, source: 'Local', args, mangoHud: mangoHud === true, gameMode: gameMode === true,
+      launcher: setup.launcher };
     const index = copy.games.findIndex(game => game.id === setup.id);
     if (index === -1) {
       if (setup.edit) throw new Error('Jogo não encontrado. Atualize a biblioteca.');
@@ -652,9 +691,15 @@ handle('game-setup:save', async ({ title, windows, runner, argumentsText, mangoH
 
 handle('proton:settings', protonSettings);
 handle('proton:latest', id => { protonGame(id); return latestGEProton(); });
-handle('proton:releases', id => {
-  protonGame(id);
-  return openWebLink('https://github.com/GloriousEggroll/proton-ge-custom/releases', shell);
+handle('proton:catalog', ({ source, page }) => {
+  if (platform !== 'linux') throw new Error('A configuração de Proton está disponível no Linux.');
+  return protonCatalog.listReleases(managedProtonRoot(), source, page);
+});
+handle('proton:install-release', (id, window) => {
+  if (platform !== 'linux') throw new Error('A configuração de Proton está disponível no Linux.');
+  return protonCatalog.installRelease(managedProtonRoot(), id, (stage, received, total) => {
+    if (!window.isDestroyed()) window.webContents.send('proton:progress', { id, stage, received, total });
+  });
 });
 handle('proton:steam-download', async ({ id, toolId }) => {
   protonGame(id);
@@ -728,7 +773,7 @@ handle('proton:executable', async ({ id, reset }, window) => {
   await updateData(copy => { copy.gameProton[id] = { ...copy.gameProton[id], executable }; });
   return protonSettings(id);
 });
-handle('game:play', async (id, window) => {
+async function playGame(id, window) {
   const game = getGame(id);
   const compatibility = data.gameProton[id] || {};
   if (game.emulator === 'android') {
@@ -786,9 +831,10 @@ handle('game:play', async (id, window) => {
     if (!await runnable(game.file)) throw new Error('O executável foi movido ou removido.');
     await launch(game.file);
   }
-  await updateData(copy => { copy.played[id] = Date.now(); });
+  if (!game.launcher) await updateData(copy => { copy.played[id] = Date.now(); });
   return state();
-});
+}
+handle('game:play', playGame);
 handle('game:favorite', async id => {
   getGame(id);
   await updateData(copy => {

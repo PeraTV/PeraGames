@@ -2,19 +2,22 @@
 
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const { fileExists, findLinuxCommand } = require('./system');
-const { steamLibraryRoots } = require('./steam-proton');
+const { fileExists, findLinuxCommand, runHostTool } = require('./system');
+const { steamLibraryRoots, systemToolsRoot } = require('./steam-proton');
 
 const automaticProton = 'GE-Proton';
 const isWindowsGame = game => Boolean(game && !game.emulator && !game.appId &&
-  (game.store === 'epic' || game.store === 'gog' || /\.exe$/i.test(game.file || '')));
+  (['epic', 'gog', 'amazon'].includes(game.store) || /\.exe$/i.test(game.file || '')));
 
 async function isProtonDirectory(directory) {
-  return typeof directory === 'string' && path.isAbsolute(directory) &&
-    fileExists(path.join(directory, 'proton'));
+  if (typeof directory !== 'string' || !path.isAbsolute(directory)) return false;
+  const launcher = path.join(directory, 'proton');
+  if (await fileExists(launcher)) return true;
+  return process.platform === 'linux' && path.dirname(directory) === systemToolsRoot &&
+    runHostTool('test', ['-f', launcher], { timeout: 3500 }).then(() => true, () => false);
 }
 
-async function findProtonVersions({ home, steamRoots, custom = [] }) {
+async function findProtonVersions({ home, steamRoots, custom = [], managed }) {
   const local = path.join(home, '.local', 'share');
   const libraries = (await Promise.all(steamRoots.map(steamLibraryRoots))).flat();
   const roots = [
@@ -25,15 +28,19 @@ async function findProtonVersions({ home, steamRoots, custom = [] }) {
     path.join(local, 'heroic', 'tools', 'proton'),
     path.join(home, '.config', 'heroic', 'tools', 'proton'),
     path.join(home, '.var', 'app', 'com.heroicgameslauncher.hgl', 'config', 'heroic', 'tools', 'proton'),
-    path.join(local, 'lutris', 'runners', 'proton')
-  ];
+    path.join(local, 'lutris', 'runners', 'proton'),
+    managed
+  ].filter(Boolean);
   const children = await Promise.all([...new Set(roots)].map(async root => {
     const entries = await fs.readdir(root, { withFileTypes: true }).catch(() => []);
     return entries.filter(entry => entry.isDirectory() || entry.isSymbolicLink()).map(entry => path.join(root, entry.name));
   }));
+  const system = process.platform === 'linux' ? await runHostTool('find', [
+    systemToolsRoot, '-mindepth', '1', '-maxdepth', '1', '-print0'
+  ], { timeout: 3500 }).then(({ stdout }) => stdout.split('\0').filter(Boolean), () => []) : [];
   const seen = new Set();
   const versions = [];
-  for (const candidate of [...custom, ...children.flat()]) {
+  for (const candidate of [...custom, ...children.flat(), ...system]) {
     if (!await isProtonDirectory(candidate)) continue;
     const real = await fs.realpath(candidate).catch(() => candidate);
     if (seen.has(real)) continue;

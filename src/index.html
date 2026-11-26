@@ -259,7 +259,7 @@
           <div class="actions">
             <button class="button" id="proton-add">Adicionar Proton</button>
             <button class="button" id="proton-latest">Verificar GE-Proton</button>
-            <button class="button" id="proton-releases">Versões do GE-Proton</button>
+            <button class="button" id="proton-manager">Gerenciar Proton</button>
             <button class="button" id="proton-help" hidden>Instalar umu-launcher</button>
           </div>
           <div id="proton-downloads" hidden>
@@ -370,6 +370,7 @@
             <label>Wine ou Proton <select id="game-setup-runner"></select></label>
             <div class="actions">
               <button type="button" class="button" id="game-setup-proton">Adicionar Proton</button>
+              <button type="button" class="button" id="game-setup-proton-manager">Gerenciar Proton</button>
               <button type="button" class="button" id="game-setup-prefix">Escolher pasta do prefixo</button>
             </div>
             <p id="game-setup-prefix-text"></p>
@@ -394,6 +395,20 @@
       </div>
     </form>
   </dialog>
+  <dialog id="proton-catalog-dialog" aria-labelledby="proton-catalog-title">
+    <div class="section-head">
+      <h2 id="proton-catalog-title">Gerenciar Proton</h2>
+      <button type="button" id="proton-catalog-close" class="button" aria-label="Fechar">×</button>
+    </div>
+    <label>Família do Proton <select id="proton-catalog-source">
+      <option value="ge">GE-Proton</option>
+      <option value="cachyos">Proton-CachyOS (SLR)</option>
+      <option value="umu">UMU-Proton</option>
+    </select></label>
+    <p id="proton-catalog-status" role="status"></p>
+    <div id="proton-catalog-entries"></div>
+    <button type="button" id="proton-catalog-more" class="button" hidden>Carregar mais versões</button>
+  </dialog>
   <dialog id="game-accounts-dialog" aria-labelledby="game-accounts-title">
     <div class="section-head">
       <h2 id="game-accounts-title">Contas de jogos</h2>
@@ -410,12 +425,14 @@
     <p id="linux-store-status" role="status"></p>
     <button class="button" id="linux-store-setup" hidden>Instalar componente da loja</button>
     <button class="button" id="linux-store-system" hidden>Buscar na loja do Linux</button>
+    <button class="button" id="linux-store-tool" hidden>Vincular componente da loja</button>
     <div id="linux-store-account" hidden>
       <div class="actions">
         <button class="button" id="linux-store-login">Abrir login no navegador</button>
         <button class="button" id="linux-store-load">Sincronizar jogos da conta</button>
       </div>
       <form id="linux-store-connect">
+        <p id="linux-store-amazon-help" hidden>Entre no site oficial da Amazon e cole a URL final do navegador abaixo.</p>
         <label>Código ou URL de retorno do login <input id="linux-store-code" type="password" maxlength="1600" autocomplete="off" required></label>
         <button class="button" type="submit">Vincular conta</button>
       </form>

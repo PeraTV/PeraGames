@@ -6,6 +6,7 @@ const { createHash } = require('node:crypto');
 const { readLibraryFolders, runHostTool } = require('./system');
 
 const defaultTool = 'steam-default';
+const systemToolsRoot = '/usr/share/steam/compatibilitytools.d';
 const readText = file => fs.readFile(file, 'utf8').catch(error => {
   if (['ENOENT', 'ENOTDIR'].includes(error.code)) return '';
   throw error;
@@ -123,6 +124,13 @@ async function steamLibraryRoots(root) {
   return [...new Set([root, ...folders.filter(folder => path.isAbsolute(folder))])];
 }
 
+async function readToolManifest(folder) {
+  const file = path.join(folder, 'compatibilitytool.vdf');
+  const text = await readText(file);
+  if (text || process.platform !== 'linux' || path.dirname(folder) !== systemToolsRoot) return text;
+  return runHostTool('cat', ['--', file], { timeout: 3500 }).then(result => result.stdout, () => '');
+}
+
 async function listSteamTools(root, localVersions = []) {
   const roots = [path.join(root, 'compatibilitytools.d'), ...(await steamLibraryRoots(root))
     .map(folder => path.join(folder, 'steamapps', 'common'))];
@@ -139,7 +147,7 @@ async function listSteamTools(root, localVersions = []) {
     tools.set(official.id, { ...official, installed: false, ...tools.get(official.id) });
   }
   const shared = await Promise.all(localVersions.filter(version => path.isAbsolute(version.path)).map(async version => {
-    const tool = parseSteamTool(await readText(path.join(version.path, 'compatibilitytool.vdf')).catch(() => ''));
+    const tool = parseSteamTool(await readToolManifest(version.path).catch(() => ''));
     return tool && { ...tool, folder: version.path };
   }));
   for (const tool of shared.filter(Boolean)) {
@@ -187,7 +195,7 @@ mv -fT -- "$temp" "$file"
 }
 
 async function addSteamTool(root, folder) {
-  const tool = parseSteamTool(await readText(path.join(folder, 'compatibilitytool.vdf')));
+  const tool = parseSteamTool(await readToolManifest(folder));
   if (!tool) throw new Error('Escolha uma pasta de Proton com compatibilitytool.vdf.');
   const destination = path.join(root, 'compatibilitytools.d', path.basename(folder));
   const existing = parseSteamTool(await readText(path.join(destination, 'compatibilitytool.vdf')));
@@ -205,5 +213,5 @@ mv -nT -- "$temp" "$2"
   return tool.id;
 }
 
-module.exports = { defaultTool, valveProton, steamLibraryRoots, readSteamChoice, writeSteamChoice, parseSteamTool,
+module.exports = { defaultTool, systemToolsRoot, valveProton, steamLibraryRoots, readSteamChoice, writeSteamChoice, parseSteamTool,
   findSteamConfig, listSteamTools, saveSteamChoice, addSteamTool };
