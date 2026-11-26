@@ -14,9 +14,9 @@ async function getCompatibility({ appId, name, info }, language) {
   const title = cleanTitle(name.replace(/\.exe$/i, ''));
   let id = gameId(appId) || savedId;
   if (!id && title) {
-    id = await findSteamGameId(title, language, true);
+    id = await findSteamGameId(title, language);
     const spaced = title.replace(/([a-z0-9])([A-Z])/g, '$1 $2');
-    if (!id && title !== spaced) id = await findSteamGameId(spaced, language, true);
+    if (!id && title !== spaced) id = await findSteamGameId(spaced, language);
   }
   if (!id) return { status: 'unmatched' };
   const cached = cache.get(id);

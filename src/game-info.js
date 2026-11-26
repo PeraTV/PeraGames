@@ -64,14 +64,14 @@ function titleKey(name) {
     .toLocaleLowerCase('pt-BR').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 }
 
-async function findSteamGameId(name, language, requireUnique = false) {
+async function findSteamGameId(name, language) {
   const locale = lookupLocale(language);
   const query = new URLSearchParams({ term: name, l: locale.steam, cc: locale.country });
   const found = await json(STEAM + '/api/storesearch/?' + query);
   const key = titleKey(name);
   const ids = new Set(found?.items?.filter(item => typeof item.name === 'string' &&
     titleKey(item.name) === key && /^\d{1,10}$/.test(String(item.id))).map(item => String(item.id)));
-  return requireUnique && ids.size > 1 ? undefined : ids.values().next().value;
+  return ids.size === 1 ? ids.values().next().value : undefined;
 }
 
 function plainText(text = '') {

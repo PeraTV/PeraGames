@@ -357,7 +357,7 @@ function renderCompatibility(game) {
     t('ProtonDB ↗');
   if (!result) note.textContent = t('Consultando compatibilidade no Linux…');
   else if (tier) {
-    const edition = game.appId ? '' : t('Referência da edição Steam. O executável desta loja pode se comportar de outro jeito.');
+    const edition = game.appId ? '' : t('Referência da edição Steam. A versão que você adicionou pode se comportar de outro jeito.');
     const source = tier === 'native' ? t('A Steam lista uma versão nativa para Linux.') :
       t('Classificação da comunidade ProtonDB.');
     const reports = tier !== 'native' && result.total > 0 ?

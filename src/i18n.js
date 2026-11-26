@@ -421,7 +421,7 @@ Prata|Silver
 Bronze|Bronze
 Não roda|Borked
 Consultando compatibilidade no Linux…|Checking Linux compatibility…
-Referência da edição Steam. O executável desta loja pode se comportar de outro jeito.|Based on the Steam edition. This store's executable may behave differently.
+Referência da edição Steam. A versão que você adicionou pode se comportar de outro jeito.|Based on the Steam edition. The version you added may behave differently.
 A Steam lista uma versão nativa para Linux.|Steam lists a native Linux version.
 Classificação da comunidade ProtonDB.|ProtonDB community rating.
 Relatos: {count}.|Reports: {count}.
