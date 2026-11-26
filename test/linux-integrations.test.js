@@ -10,6 +10,38 @@ const { loginCode, storeGameId } = require('../src/linux-stores');
 const { releasePackages } = require('../src/proton-catalog');
 const { releaseAsset } = require('../src/store-tools');
 const { steamAccountGames } = require('../src/steam-account');
+const vm = require('node:vm');
+const { readFileSync } = require('node:fs');
+const { createRequire } = require('node:module');
+
+test('avisa quando a Epic pede atualização ou quando o Proton falha após o Legendary sair', async () => {
+  const moduleFile = require.resolve('../src/linux-stores');
+  const requireStore = createRequire(moduleFile);
+  const moduleExports = {};
+  let processMonitor;
+  const load = name => name === './system' ? {
+    launch: async (file, args, settings) => {
+      assert.deepEqual(Array.from(args.slice(0, 4)), ['launch', 'game-id', '--no-wine', '--wrapper']);
+      assert.match(args[4], /PERAGAMES_RUNNER_EXIT/);
+      processMonitor = settings;
+    }
+  } : requireStore(name);
+  vm.runInNewContext(readFileSync(moduleFile, 'utf8'), { require: load, process, module: moduleExports });
+  const failures = [];
+  const play = () => moduleExports.exports.play('epic', { tool: 'legendary', baseArgs: [] }, {
+    id: 'game-id', umu: '/apps/umu run', onFailure: reason => failures.push(reason)
+  });
+  await play();
+  processMonitor.onLine('Game is out of date, please update');
+  processMonitor.onClose(1);
+  await play();
+  processMonitor.onLine('bwrap: No permissions to create a new namespace');
+  processMonitor.onLine('PERAGAMES_RUNNER_EXIT=1');
+  processMonitor.onClose(0);
+  await play();
+  processMonitor.onClose(0);
+  assert.deepEqual(failures, ['update', 'runtime']);
+});
 
 test('usa o umu preparado pelo PeraGames para abrir o jogo com o Proton selecionado', async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'peragames-umu-'));

@@ -375,6 +375,11 @@ handle('downloads:steam-progress', async () => {
 handle('steam-account:info', () => ({ profile: data.steamProfile, ready: Boolean(steamKey),
   saved: Boolean(steamKey && data.steamKey), count: data.ownedStoreGames.steam?.length }));
 handle('steam-account:help', () => openWebLink('https://steamcommunity.com/dev/apikey', shell));
+handle('steam-account:guide', page => {
+  const url = page === 'profile' ? 'https://steamcommunity.com/my/' :
+    page === 'account' ? 'https://store.steampowered.com/account/' : null;
+  if (url) return openWebLink(url, shell);
+});
 async function changeSteamAccount(action) {
   if (storeOperations.has('steam')) throw new Error('Aguarde a operação atual desta loja.');
   storeOperations.add('steam');
@@ -943,6 +948,12 @@ handle('proton:executable', async ({ id, reset }, window) => {
 async function playGame(id, window) {
   const game = getGame(id);
   const compatibility = data.gameProton[id] || {};
+  const epicStatus = reason => {
+    if (!window.isDestroyed()) window.webContents.send('game:epic-status', { name: game.name, reason });
+  };
+  if (game.store === 'epic') {
+    epicStatus(platform === 'linux' && !compatibility.proton?.startsWith('wine') ? 'preparing-proton' : 'preparing');
+  }
   if (game.emulator === 'android') {
     if (platform !== 'win32' || path.extname(game.file).toLowerCase() !== '.lnk') throw new Error('Este jogo precisa de um atalho do Windows.');
     if (!await fileExists(game.file)) throw new Error('O atalho do Android foi movido ou removido. Importe o atalho novamente.');
@@ -973,7 +984,7 @@ async function playGame(id, window) {
   } else if (game.store && platform !== 'linux') {
     const config = await linuxStore(game.store);
     if (!config.ready || !config.installable) throw new Error('A loja não pode abrir este jogo neste sistema.');
-    await linuxStores.play(game.store, config, { id: game.storeId, folder: game.installFolder });
+    await linuxStores.play(game.store, config, { id: game.storeId, folder: game.installFolder, onFailure: epicStatus });
   } else if (platform === 'linux' && (isWindowsGame(game) || compatibility.executable)) {
     const executable = compatibility.executable || game.file;
     if (!game.store && !await fileExists(executable)) throw new Error('O executável foi movido ou removido.');
@@ -987,7 +998,8 @@ async function playGame(id, window) {
     if (game.store) {
       const config = await linuxStore(game.store);
       if (!config.ready) throw new Error('Instale o componente da loja para continuar.');
-      await linuxStores.play(game.store, config, { id: game.storeId, folder: game.installFolder, umu: runner.file, environment: runner.environment });
+      await linuxStores.play(game.store, config, { id: game.storeId, folder: game.installFolder,
+        umu: runner.file, environment: runner.environment, onFailure: epicStatus });
     } else {
       const cwd = path.dirname(executable);
       const command = await withLaunchTools(runner.file, [executable, ...(game.args || [])], game);

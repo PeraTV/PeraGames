@@ -372,7 +372,12 @@ body[data-palette]:not([data-palette="amber"]) :focus-visible { outline-color: v
 #proton-catalog-more { margin-top: 8px; }
 #proton-prefix-text, #proton-executable-text { overflow-wrap: anywhere; }
 #linux-store-dialog { width: min(720px, calc(100% - 32px)); max-height: min(85vh, 800px); overflow: auto; }
-#steam-account-dialog { width: min(580px, calc(100% - 32px)); }
+#steam-account-dialog { width: min(580px, calc(100% - 32px)); max-height: calc(100% - 32px); overflow: auto; }
+.steam-profile-guide { border: 1px solid var(--line); border-radius: 9px; padding: 8px 12px; }
+.steam-profile-guide summary { color: var(--amber); cursor: pointer; }
+.steam-profile-guide p, .steam-profile-guide ol { color: var(--muted); margin: 8px 0 0; }
+.steam-profile-guide li + li { margin-top: 10px; }
+.steam-profile-guide li .button { display: block; margin-top: 6px; }
 #library-game-count { color: var(--muted); margin: 0 0 14px; }
 #game-setup-dialog { width: min(780px, calc(100% - 32px)); max-height: calc(100% - 32px); overflow: auto; }
 .setup-grid { display: grid; grid-template-columns: minmax(120px, 25%) minmax(0, 1fr); gap: 20px; }

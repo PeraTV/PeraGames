@@ -378,6 +378,7 @@
       <h2 id="game-setup-title">Adicionar jogo ou aplicativo</h2>
       <button type="button" class="button" id="game-setup-close" aria-label="Fechar">×</button>
     </div>
+    <p id="game-setup-epic-note" hidden>Este atalho é para o launcher oficial da Epic. Os jogos importados pela sua conta abrem pela Biblioteca do PeraGames.</p>
     <form id="game-setup-form">
       <div class="setup-grid">
         <div class="setup-cover">
@@ -526,6 +527,18 @@
     <p>Importe a biblioteca com seu perfil e uma chave da API da Steam. A Steam precisa permitir ver seus detalhes de jogos.</p>
     <form id="steam-account-form">
       <label>Link do perfil ou SteamID64 <input id="steam-account-profile" type="text" maxlength="180" autocomplete="off" required></label>
+      <details class="steam-profile-guide">
+        <summary>Como encontrar o link do perfil ou o SteamID64?</summary>
+        <p>Você pode usar qualquer uma das duas opções.</p>
+        <ol>
+          <li><strong>Link do perfil.</strong> <span>Abra seu perfil da Steam no navegador. Depois de entrar na conta, copie o endereço da barra do navegador e cole no campo acima.</span>
+            <button class="button" id="steam-open-profile" type="button">Abrir meu perfil Steam</button>
+          </li>
+          <li><strong>SteamID64.</strong> <span>Abra os detalhes da conta Steam. Copie o número de 17 dígitos mostrado abaixo do nome da conta e cole no campo acima.</span>
+            <button class="button" id="steam-open-account" type="button">Abrir detalhes da conta Steam</button>
+          </li>
+        </ol>
+      </details>
       <label>Chave da API da Steam <input id="steam-account-key" type="password" maxlength="32" autocomplete="off"></label>
       <div class="actions">
         <button class="button primary" id="steam-account-sync" type="submit">Sincronizar jogos da conta</button>

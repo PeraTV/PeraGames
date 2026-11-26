@@ -288,7 +288,7 @@ async function detectStores(stores, platform, env, data, roots) {
   return Object.fromEntries(pairs);
 }
 
-function launch(file, args = [], { cwd = path.dirname(file), visible = false, environment = {}, hostCwd, wait = false, onLine } = {}) {
+function launch(file, args = [], { cwd = path.dirname(file), visible = false, environment = {}, hostCwd, wait = false, onLine, onClose } = {}) {
   if (process.platform === 'darwin' && file.endsWith('.app')) {
     return run('/usr/bin/open', ['-a', file, ...(args.length ? ['--args', ...args] : [])]);
   }
@@ -309,6 +309,7 @@ function launch(file, args = [], { cwd = path.dirname(file), visible = false, en
       stream.on('end', () => { if (remainder) onLine(remainder); });
     }
     child.once('error', reject);
+    if (onClose) child.once('close', onClose);
     if (wait) {
       child.once('close', code => code === 0 ? resolve() : reject(new Error('Process exited with code ' + code)));
       return;

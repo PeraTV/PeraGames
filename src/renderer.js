@@ -697,7 +697,9 @@ function addGameFromLibrary(node) {
 function openGameSetup(id, storeId) {
   gameSetup = undefined;
   byId('game-setup-form').reset();
-  byId('game-setup-title').textContent = t(storeId ? 'Configurar launcher de Windows' : id ? 'Editar inicialização' : 'Adicionar jogo ou aplicativo');
+  byId('game-setup-title').textContent = t(storeId === 'epic' ? 'Configurar launcher oficial da Epic' :
+    storeId ? 'Configurar launcher de Windows' : id ? 'Editar inicialização' : 'Adicionar jogo ou aplicativo');
+  byId('game-setup-epic-note').hidden = storeId !== 'epic';
   byId('game-setup-runner').replaceChildren();
   renderGameSetup();
   byId('game-setup-dialog').showModal();
@@ -833,25 +835,30 @@ function details(item) {
     facts.append(row);
   }
   body.append(facts);
+  if (item.id === 'epic') {
+    body.append(button(t('Biblioteca da Epic no PeraGames'), () => openStoreAccount(item), 'button primary launch'));
+  }
   if (item.installed || item.available) {
-    const label = item.installed ? t(item.configuredLauncher ? 'Abrir com Wine ou Proton' :
+    const label = item.id === 'epic' ? t(item.installed ? 'Abrir launcher oficial' : 'Baixar launcher oficial') :
+      item.installed ? t(item.configuredLauncher ? 'Abrir com Wine ou Proton' :
       item.windowsShortcut ? 'Abrir com Wine' : item.id === 'wine' ? 'Configurar Wine' : 'Abrir') :
-      state.platform === 'linux' ? t(item.id === 'epic' ? 'Baixar a prévia oficial' : 'Instalar no Linux') :
+      state.platform === 'linux' ? t('Instalar no Linux') :
       t('Baixar para {system}', { system: platform });
     body.append(button(label, async node => {
       if (!item.installed && item.canInstallFlatpak) node.textContent = t('Instalando pelo Flatpak…');
       await perform(node, () => item.installed ? api.openStore(item.id) : api.downloadStore(item.id),
         !item.installed && item.canInstallFlatpak ? 'Instalação concluída.' : undefined);
       if (node.isConnected) node.textContent = label;
-    }, 'button primary launch'));
+    }, item.id === 'epic' ? 'button' : 'button primary launch'));
   }
-  if (['steam', 'epic', 'gog', 'amazon'].includes(item.id) || item.amazonInstaller) {
+  if (['steam', 'gog', 'amazon'].includes(item.id) || item.amazonInstaller) {
     const store = item.amazonInstaller ? state.stores.find(store => store.id === 'amazon') : item;
     body.append(button(t('Conectar conta no PeraGames'), () => openStoreAccount(store), 'button'));
   }
   if (state.platform === 'linux') {
     if (item.windowsSetup) {
-      body.append(button(t(item.configuredLauncher ? 'Editar Wine ou Proton' : 'Configurar com Wine ou Proton'),
+      body.append(button(t(item.id === 'epic' ? 'Configurar atalho do launcher oficial' :
+        item.configuredLauncher ? 'Editar Wine ou Proton' : 'Configurar com Wine ou Proton'),
         () => openGameSetup(undefined, item.id), 'button'));
     }
     if (item.windowsInstaller) {
@@ -1696,6 +1703,9 @@ async function renderSteamAccount() {
 byId('steam-account-close').addEventListener('click', () => byId('steam-account-dialog').close());
 byId('steam-account-dialog').addEventListener('close', () => { byId('steam-account-key').value = ''; });
 byId('steam-account-help').addEventListener('click', event => perform(event.currentTarget, api.steamAccountHelp));
+for (const [id, page] of [['steam-open-profile', 'profile'], ['steam-open-account', 'account']]) {
+  byId(id).addEventListener('click', event => perform(event.currentTarget, () => api.steamAccountGuide(page)));
+}
 byId('steam-account-form').addEventListener('submit', async event => {
   event.preventDefault();
   const input = byId('steam-account-key');
@@ -1829,6 +1839,21 @@ api.onDownloadLibrary(library => {
   state = library;
   render();
   if (byId('game-editor').open) renderGameDetails();
+});
+api.onEpicLaunchStatus(({ name, reason }) => {
+  const messages = {
+    preparing: 'Preparando {name}.',
+    'preparing-proton': 'Preparando {name}. No primeiro uso do Proton, pode levar alguns minutos.',
+    update: 'A Epic pediu uma atualização para {name}. Abra a lista da Epic no PeraGames e selecione Atualizar jogo.',
+    signin: 'O login da Epic falhou ao abrir {name}. Conecte a conta novamente em Lojas.',
+    missing: 'O Legendary não encontrou os arquivos de {name}. Confira a instalação na lista da Epic.',
+    runtime: 'O ambiente do Proton falhou ao iniciar {name}.',
+    runner: 'O Wine ou Proton encerrou {name} com erro.',
+    store: 'O Legendary não conseguiu abrir {name}.'
+  };
+  const message = t(messages[reason] || messages.store, { name });
+  if (byId('linux-store-dialog').open) byId('linux-store-status').textContent = message;
+  else notify(message);
 });
 byId('game-setup-close').addEventListener('click', () => byId('game-setup-dialog').close());
 byId('game-setup-edit').addEventListener('click', () => {

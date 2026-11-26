@@ -210,11 +210,39 @@ async function install(provider, config, id, folder, progress) {
   } catch { throw new Error('Não foi possível instalar ou atualizar o jogo pela loja.'); }
 }
 
-function play(provider, config, { id, folder, umu, environment }) {
+const quoteWrapper = argument => "'" + argument.replaceAll("'", "'\"'\"'") + "'";
+const epicRunnerScript = '"$@"; result=$?; if [ "$result" -ne 0 ]; then printf "\\nPERAGAMES_RUNNER_EXIT=%s\\n" "$result" >&2; fi; exit "$result"';
+
+function epicLaunchMonitor(onFailure) {
+  let reason;
+  let reported = false;
+  const report = fallback => {
+    if (reported) return;
+    reported = true;
+    onFailure(reason || fallback);
+  };
+  return {
+    onLine(line) {
+      if (/^PERAGAMES_RUNNER_EXIT=\d+$/.test(line)) report('runner');
+      else if (/game is out of date|update required/i.test(line)) reason = 'update';
+      else if (/login failed|failed to (?:log in|login)|not logged in|authentication failed/i.test(line)) reason = 'signin';
+      else if (/not currently installed|install directory.*deleted|cannot launch.*not installed/i.test(line)) reason = 'missing';
+      else if (/bwrap:|pressure-vessel.*(?:error|failed)|failed to.*(?:runtime|proton)|unprivileged user namespace/i.test(line)) reason = 'runtime';
+    },
+    onClose(code, signal) {
+      if (code || signal) report('store');
+    }
+  };
+}
+
+function play(provider, config, { id, folder, umu, environment, onFailure }) {
   const args = provider === 'gog' ? ['launch', folder, id, '--platform', process.platform === 'darwin' ? 'osx' : 'windows'] : ['launch', id];
-  const wrapper = umu ? ['--no-wine', '--wrapper', "'" + umu.replaceAll("'", "'\"'\"'") + "'"] : [];
+  const monitored = provider === 'epic' && onFailure;
+  const command = monitored && umu ? ['/bin/sh', '-c', epicRunnerScript, 'peragames-epic', umu] : [umu];
+  const wrapper = umu ? ['--no-wine', '--wrapper', command.map(quoteWrapper).join(' ')] : [];
   return launch(config.tool, [...config.baseArgs, ...args, ...wrapper], {
-    environment: { ...config.environment, ...environment }
+    environment: { ...config.environment, ...environment },
+    ...(monitored ? epicLaunchMonitor(onFailure) : {})
   });
 }
 

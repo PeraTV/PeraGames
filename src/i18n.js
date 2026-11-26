@@ -372,6 +372,14 @@ Sincronizar|Sync
 Conta Steam|Steam account
 Importe a biblioteca com seu perfil e uma chave da API da Steam. A Steam precisa permitir ver seus detalhes de jogos.|Import your library with your profile and a Steam Web API key. Your Steam game details must be visible to the API.
 Link do perfil ou SteamID64|Profile link or SteamID64
+Como encontrar o link do perfil ou o SteamID64?|How do I find my profile link or SteamID64?
+Você pode usar qualquer uma das duas opções.|You can use either option.
+Link do perfil.|Profile link.
+SteamID64.|SteamID64.
+Abra seu perfil da Steam no navegador. Depois de entrar na conta, copie o endereço da barra do navegador e cole no campo acima.|Open your Steam profile in your browser. Once signed in, copy the address from the browser's address bar and paste it into the field above.
+Abra os detalhes da conta Steam. Copie o número de 17 dígitos mostrado abaixo do nome da conta e cole no campo acima.|Open your Steam account details. Copy the 17-digit number under the account name and paste it into the field above.
+Abrir meu perfil Steam|Open my Steam profile
+Abrir detalhes da conta Steam|Open Steam account details
 Chave da API da Steam|Steam Web API key
 Obter chave na Steam|Get a key from Steam
 Desconectar conta|Disconnect account
@@ -449,6 +457,20 @@ Não foi possível instalar esta versão do Proton.|Could not install this Proto
 A verificação do arquivo de Proton falhou.|Proton archive verification failed.
 Esta versão já está sendo instalada.|This version is already being installed.
 Configurar launcher de Windows|Set up Windows launcher
+Configurar launcher oficial da Epic|Set up the official Epic launcher
+Este atalho é para o launcher oficial da Epic. Os jogos importados pela sua conta abrem pela Biblioteca do PeraGames.|This shortcut is for the official Epic launcher. Start games imported from your account in the PeraGames Library.
+Biblioteca da Epic no PeraGames|Epic library in PeraGames
+Abrir launcher oficial|Open official launcher
+Baixar launcher oficial|Download official launcher
+Configurar atalho do launcher oficial|Set up official launcher shortcut
+Preparando {name}. No primeiro uso do Proton, pode levar alguns minutos.|Preparing {name}. The first Proton launch can take a few minutes.
+Preparando {name}.|Preparing {name}.
+A Epic pediu uma atualização para {name}. Abra a lista da Epic no PeraGames e selecione Atualizar jogo.|Epic requires an update for {name}. Open the Epic library in PeraGames and choose Update game.
+O login da Epic falhou ao abrir {name}. Conecte a conta novamente em Lojas.|Epic sign-in failed when opening {name}. Reconnect your account in Stores.
+O Legendary não encontrou os arquivos de {name}. Confira a instalação na lista da Epic.|Legendary could not find the files for {name}. Check the installation in the Epic library.
+O ambiente do Proton falhou ao iniciar {name}.|The Proton runtime failed to start {name}.
+O Wine ou Proton encerrou {name} com erro.|Wine or Proton closed {name} with an error.
+O Legendary não conseguiu abrir {name}.|Legendary could not start {name}.
 Configurar com Wine ou Proton|Set up with Wine or Proton
 Disponível via Wine ou Proton|Available through Wine or Proton
 Abrir com Wine ou Proton|Open with Wine or Proton
