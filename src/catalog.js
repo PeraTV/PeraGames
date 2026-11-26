@@ -16,9 +16,11 @@ const stores = [
   },
   {
     id: 'epic', name: 'Epic Games', category: 'Lojas', icon: 'epic',
-    description: 'Abra o Epic Games Launcher para acessar sua biblioteca. No Linux, acesse sua conta pelo Heroic.',
+    description: 'Acesse sua biblioteca da Epic. O launcher oficial tem uma versão prévia para Linux.',
     website: 'https://store.epicgames.com/',
     windowsUrl: 'https://store.epicgames.com/download',
+    linuxUrl: 'https://launcher.epicgames.com/',
+    linuxCommands: ['EpicGamesLauncher', 'epic-games-launcher', 'epicgameslauncher'],
     windowsPaths: ['Epic Games/Launcher/Portal/Binaries/Win64/EpicGamesLauncher.exe']
   },
   {
@@ -62,6 +64,12 @@ const stores = [
     description: 'Acesse a biblioteca e os serviços da Ubisoft.',
     website: 'https://www.ubisoft.com/en-us/ubisoft-connect', windowsUrl: 'https://www.ubisoft.com/en-us/ubisoft-connect',
     windowsPaths: ['Ubisoft/Ubisoft Game Launcher/UbisoftConnect.exe', 'Ubisoft/Ubisoft Game Launcher/upc.exe']
+  },
+  {
+    id: 'wine', name: 'Wine', category: 'Ferramentas', icon: 'wine',
+    description: 'Execute instaladores e aplicativos do Windows no Linux. Use o Wine do sistema nos atalhos .exe.',
+    website: 'https://www.winehq.org/', linuxUrl: 'https://www.winehq.org/download',
+    linuxCommands: ['winecfg']
   },
   {
     id: 'lutris', name: 'Lutris', category: 'Ferramentas', icon: 'controller', color: '#e4b174',

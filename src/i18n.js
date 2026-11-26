@@ -366,7 +366,33 @@ Escolha uma loja para conectar ou sincronizar sua biblioteca.|Choose a store to 
 Não instalados|Not installed
 Instalando…|Installing…
 Sincronizar|Sync
-Conectar|Connect`.split('\n').map(line => line.split('|')));
+Conectar|Connect
+Buscar na loja do Linux|Search the Linux software center
+Loja do Linux|Linux software center
+Acesse sua biblioteca da Epic. O launcher oficial tem uma versão prévia para Linux.|Access your Epic library. The official launcher has a Linux preview.
+Execute instaladores e aplicativos do Windows no Linux. Use o Wine do sistema nos atalhos .exe.|Run Windows installers and apps on Linux. Use system Wine for .exe shortcuts.
+Digite o nome do aplicativo para buscar na loja do Linux.|Enter an app name to search the Linux software center.
+Nenhuma loja compatível foi detectada. Use Big Store, GNOME Software, Discover ou Pamac.|No compatible software center was found. Use Big Store, GNOME Software, Discover, or Pamac.
+Conectar conta no PeraGames|Connect account in PeraGames
+Baixar a prévia oficial|Download the official preview
+Abrir no Heroic|Open in Heroic
+Instalar e abrir o Heroic|Install and open Heroic
+No Heroic, abra Gerenciar contas e entre com a conta {name}.|In Heroic, open Manage Accounts and sign in with your {name} account.
+O Heroic não foi encontrado após a instalação.|Heroic was not found after installation.
+Abrir com Wine|Open with Wine
+Configurar Wine|Configure Wine
+Testar teclado no Wine|Test keyboard in Wine
+Instale o Wine em Lojas → Ferramentas para abrir este executável.|Install Wine under Stores → Tools to open this executable.
+O aplicativo não abriu pelo Wine. Use Testar teclado no Wine para verificar a compatibilidade.|The app failed to open in Wine. Use Test Keyboard in Wine to check compatibility.
+Executável do Windows indisponível.|Windows executable unavailable.
+{version}. Digite no Bloco de Notas para verificar o teclado.|{version}. Type in Notepad to test the keyboard.
+Este é o instalador da Amazon para Windows. Se o teclado funcionar no Bloco de Notas do Wine e travar no login, tente acessar sua biblioteca pelo Heroic.|This is Amazon's Windows installer. If typing works in Wine Notepad but fails at sign-in, try accessing your library through Heroic.
+{name} · disponível para baixar|{name} · available to download
+{name} · adicionar à Steam|{name} · add to Steam
+Feche a Steam antes de salvar. Para instalar uma versão oficial, use Baixar pela Steam.|Exit Steam before saving. To install an official version, use Download via Steam.
+Versões do GE-Proton|GE-Proton releases
+Versões para baixar pela Steam|Versions available in Steam
+Baixar pela Steam|Download via Steam`.split('\n').map(line => line.split('|')));
 
   function languageFor(locale) {
     return /^pt(?:[-_]|$)/i.test(locale || 'pt-BR') ? 'pt-BR' : 'en';

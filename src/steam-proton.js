@@ -12,6 +12,22 @@ const readText = file => fs.readFile(file, 'utf8').catch(error => {
 });
 const configError = 'Não foi possível ler ou alterar a configuração de compatibilidade da Steam.';
 const toolId = /^[A-Za-z0-9][A-Za-z0-9_. +-]{0,120}$/;
+const valveProton = [
+  ['proton_experimental', 'Proton Experimental', '1493710'],
+  ['proton_hotfix', 'Proton Hotfix', '2180100'],
+  ['proton_11', 'Proton 11.0', '4628710'],
+  ['proton_10', 'Proton 10.0', '3658110'],
+  ['proton_9', 'Proton 9.0', '2805730'],
+  ['proton_8', 'Proton 8.0', '2348590'],
+  ['proton_7', 'Proton 7.0', '1887720'],
+  ['proton_63', 'Proton 6.3', '1580130'],
+  ['proton_513', 'Proton 5.13', '1420170'],
+  ['proton_5', 'Proton 5.0', '1245040'],
+  ['proton_411', 'Proton 4.11', '1113280'],
+  ['proton_42', 'Proton 4.2', '1054830'],
+  ['proton_316', 'Proton 3.16', '961940'],
+  ['proton_37', 'Proton 3.7', '858280']
+].map(([id, name, appId]) => ({ id, name, appId }));
 
 function parseKeyValues(text) {
   const scanner = /\s+|\/\/[^\r\n]*|"(?:\\.|[^"\\])*"|[{}]/gy;
@@ -84,7 +100,7 @@ function parseSteamTool(text) {
     const tools = child(child(parseKeyValues(text), 'compatibilitytools'), 'compat_tools');
     const options = tools?.entries?.filter(entry =>
       toolId.test(entry.key) && /proton/i.test(entry.key) &&
-      child(entry, 'install_path')?.value === '.');
+      ['.', './'].includes(child(entry, 'install_path')?.value));
     const entry = options?.[0];
     if (entry) return { id: entry.key, name: child(entry, 'display_name')?.value || entry.key };
   } catch {}
@@ -100,9 +116,15 @@ async function findSteamConfig(roots, preferFlatpak) {
   throw new Error('A configuração da Steam não foi encontrada. Abra a Steam uma vez para criá-la.');
 }
 
-async function listSteamTools(root) {
-  const folders = readLibraryFolders(await readText(path.join(root, 'steamapps', 'libraryfolders.vdf')));
-  const roots = [path.join(root, 'compatibilitytools.d'), ...[root, ...folders.filter(folder => path.isAbsolute(folder))]
+async function steamLibraryRoots(root) {
+  const files = ['steamapps/libraryfolders.vdf', 'config/libraryfolders.vdf'];
+  const folders = (await Promise.all(files.map(file => readText(path.join(root, file)).catch(() => ''))))
+    .flatMap(readLibraryFolders);
+  return [...new Set([root, ...folders.filter(folder => path.isAbsolute(folder))])];
+}
+
+async function listSteamTools(root, localVersions = []) {
+  const roots = [path.join(root, 'compatibilitytools.d'), ...(await steamLibraryRoots(root))
     .map(folder => path.join(folder, 'steamapps', 'common'))];
   const found = await Promise.all([...new Set(roots)].map(async folder => {
     const entries = await fs.readdir(folder, { withFileTypes: true }).catch(() => []);
@@ -112,7 +134,17 @@ async function listSteamTools(root) {
     }));
   }));
   const tools = new Map();
-  for (const option of found.flat().filter(Boolean)) tools.set(option.id, option);
+  for (const option of found.flat().filter(Boolean)) tools.set(option.id, { ...option, installed: true });
+  for (const official of valveProton) {
+    tools.set(official.id, { ...official, installed: false, ...tools.get(official.id) });
+  }
+  const shared = await Promise.all(localVersions.filter(version => path.isAbsolute(version.path)).map(async version => {
+    const tool = parseSteamTool(await readText(path.join(version.path, 'compatibilitytool.vdf')).catch(() => ''));
+    return tool && { ...tool, folder: version.path };
+  }));
+  for (const tool of shared.filter(Boolean)) {
+    if (!tools.has(tool.id)) tools.set(tool.id, tool);
+  }
   return [...tools.values()].sort((a, b) => b.name.localeCompare(a.name, 'en', { numeric: true }));
 }
 
@@ -173,4 +205,5 @@ mv -nT -- "$temp" "$2"
   return tool.id;
 }
 
-module.exports = { defaultTool, readSteamChoice, writeSteamChoice, parseSteamTool, findSteamConfig, listSteamTools, saveSteamChoice, addSteamTool };
+module.exports = { defaultTool, valveProton, steamLibraryRoots, readSteamChoice, writeSteamChoice, parseSteamTool,
+  findSteamConfig, listSteamTools, saveSteamChoice, addSteamTool };

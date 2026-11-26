@@ -154,6 +154,36 @@ async function findLinuxCommand(name, env) {
   }
 }
 
+function softwareCenters(desktop) {
+  const gnome = 'gnome-software';
+  const kde = 'plasma-discover';
+  const pamac = 'pamac-manager';
+  if (/KDE|PLASMA/i.test(desktop)) return [kde, pamac, gnome];
+  if (/GNOME|UNITY|COSMIC/i.test(desktop)) return [gnome, pamac, kde];
+  return [pamac, gnome, kde];
+}
+
+async function openLinuxSoftware(query) {
+  const term = typeof query === 'string' ? query.trim() : '';
+  if (process.platform !== 'linux' || !term || term.length > 120 || /[\x00-\x1f\x7f]/.test(term)) {
+    throw new Error('Digite o nome do aplicativo para buscar na loja do Linux.');
+  }
+  const centers = softwareCenters(process.env.XDG_CURRENT_DESKTOP || '');
+  // Big Store's wrapper evaluates its search argument. Pass only plain search terms.
+  if (/^[\p{L}\p{N}][\p{L}\p{N} ._-]*$/u.test(term) && !/^(category|appstream|aur|flatpak|snap)$/i.test(term)) {
+    centers.unshift('big-store');
+  }
+  for (const name of centers) {
+    const file = await findLinuxCommand(name, process.env);
+    if (!file) continue;
+    const args = name === 'big-store' ? [term] :
+      name === 'plasma-discover' ? ['--mode', 'Browsing', '--search=' + term] : ['--search=' + term];
+    await launch(file, args);
+    return;
+  }
+  throw new Error('Nenhuma loja compatível foi detectada. Use Big Store, GNOME Software, Discover ou Pamac.');
+}
+
 async function isMacBundle(file) {
   return typeof file === 'string' && file.endsWith('.app') && await fileExists(path.join(file, 'Contents', 'Info.plist'));
 }
@@ -266,4 +296,5 @@ function launch(file, args = [], { cwd = path.dirname(file), visible = false, en
   });
 }
 
-module.exports = { getSteamRoots, steamGames, readLibraryFolders, readVdfString, detectStores, fileExists, launch, isMacBundle, macApps, findLinuxCommand, openWebLink, runHostTool, flathubId, installFlatpak };
+module.exports = { getSteamRoots, steamGames, readLibraryFolders, readVdfString, detectStores, fileExists, launch, isMacBundle,
+  macApps, findLinuxCommand, openWebLink, runHostTool, flathubId, installFlatpak, openLinuxSoftware };

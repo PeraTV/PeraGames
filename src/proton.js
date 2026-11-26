@@ -3,6 +3,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { fileExists, findLinuxCommand } = require('./system');
+const { steamLibraryRoots } = require('./steam-proton');
 
 const automaticProton = 'GE-Proton';
 const isWindowsGame = game => Boolean(game && !game.emulator && !game.appId &&
@@ -15,8 +16,11 @@ async function isProtonDirectory(directory) {
 
 async function findProtonVersions({ home, steamRoots, custom = [] }) {
   const local = path.join(home, '.local', 'share');
+  const libraries = (await Promise.all(steamRoots.map(steamLibraryRoots))).flat();
   const roots = [
-    ...steamRoots.flatMap(root => ['compatibilitytools.d', 'steamapps/common'].map(dir => path.join(root, dir))),
+    ...steamRoots.map(root => path.join(root, 'compatibilitytools.d')),
+    ...libraries.map(root => path.join(root, 'steamapps', 'common')),
+    path.join(local, 'Steam', 'compatibilitytools.d'),
     path.join(local, 'umu', 'compatibilitytools'),
     path.join(local, 'heroic', 'tools', 'proton'),
     path.join(home, '.config', 'heroic', 'tools', 'proton'),

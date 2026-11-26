@@ -1,0 +1,31 @@
+name: Testar PeraGames no Linux
+on:
+  push:
+    branches: [fix/linux-proton-lojas]
+permissions:
+  contents: read
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install
+      - run: npm test
+      - run: npx electron-builder --linux dir --x64 --publish never --config.asar=false
+      - name: Empacotar Flatpak x64
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          cp -a dist/release/linux-unpacked packaging/flatpak/electron-app
+          flatpak-builder --user --install-deps-from=flathub --force-clean --repo=flatpak-repo flatpak-build packaging/flatpak/io.github.PeraTV.PeraGames.json
+          flatpak build-bundle --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo flatpak-repo PeraGames-Linux-x64-v0.21.0.flatpak io.github.PeraTV.PeraGames
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PeraGames-Linux-x64-v0.21.0
+          path: PeraGames-Linux-x64-v0.21.0.flatpak
+          if-no-files-found: error
+          compression-level: 0

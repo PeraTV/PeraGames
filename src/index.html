@@ -174,10 +174,13 @@
     <section id="catalog" aria-labelledby="catalog-title" hidden>
       <div class="catalog-top">
         <h1 id="catalog-title">Lojas</h1>
-        <label class="search">
-          <span aria-hidden="true" class="search-icon"></span>
-          <input type="search" id="app-search" placeholder="Buscar aplicativos" aria-label="Buscar aplicativos">
-        </label>
+        <div class="catalog-search">
+          <label class="search">
+            <span aria-hidden="true" class="search-icon"></span>
+            <input type="search" id="app-search" placeholder="Buscar aplicativos" aria-label="Buscar aplicativos">
+          </label>
+          <button class="button" id="app-search-system" hidden>Buscar na loja do Linux</button>
+        </div>
         <div class="tabs" id="catalog-tabs" aria-label="Categorias de aplicativos"></div>
       </div>
       <div class="market">
@@ -256,7 +259,12 @@
           <div class="actions">
             <button class="button" id="proton-add">Adicionar Proton</button>
             <button class="button" id="proton-latest">Verificar GE-Proton</button>
+            <button class="button" id="proton-releases">Versões do GE-Proton</button>
             <button class="button" id="proton-help" hidden>Instalar umu-launcher</button>
+          </div>
+          <div id="proton-downloads" hidden>
+            <label>Versões para baixar pela Steam <select id="proton-download-version"></select></label>
+            <button class="button" id="proton-download">Baixar pela Steam</button>
           </div>
           <div id="proton-prefix-settings">
             <p id="proton-prefix-text"></p>
@@ -401,6 +409,7 @@
     </div>
     <p id="linux-store-status" role="status"></p>
     <button class="button" id="linux-store-setup" hidden>Instalar componente da loja</button>
+    <button class="button" id="linux-store-system" hidden>Buscar na loja do Linux</button>
     <div id="linux-store-account" hidden>
       <div class="actions">
         <button class="button" id="linux-store-login">Abrir login no navegador</button>

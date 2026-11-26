@@ -7,7 +7,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { stores, romFormats, romArguments } = require('./catalog');
-const { getSteamRoots, steamGames, detectStores, fileExists, launch, isMacBundle, macApps, findLinuxCommand, openWebLink, flathubId, installFlatpak } = require('./system');
+const { getSteamRoots, steamGames, detectStores, fileExists, launch, isMacBundle, macApps, findLinuxCommand,
+  openWebLink, flathubId, installFlatpak, openLinuxSoftware, runHostTool } = require('./system');
 const { isWindowsGame, isProtonDirectory, findProtonVersions, findWineVersions, latestGEProton, windowsRunner } = require('./proton');
 const linuxStores = require('./linux-stores');
 const steamProton = require('./steam-proton');
@@ -24,6 +25,7 @@ const { createUpdater } = require('./app-update');
 const updater = createUpdater({ app, shell, version, repository: updateRepository });
 
 const platform = process.platform;
+const isAmazonInstaller = file => /^amazongamessetup(?: ?\(\d+\))?\.exe$/i.test(path.basename(file || ''));
 const storeDownload = ({ id, windowsUrl, linuxUrl, website }) =>
   platform === 'win32' ? windowsUrl : platform === 'darwin' ? (macApps[id] ? website || windowsUrl : '') : linuxUrl;
 const runnable = async file => await fileExists(file) || (platform === 'darwin' && await isMacBundle(file));
@@ -176,15 +178,19 @@ function state() {
     tv: { ...data.tv, loginLaunch: process.argv.includes(loginFlag) ||
       (platform === 'darwin' && data.tv.atLogin && app.getLoginItemSettings().wasOpenedAtLogin) },
     dolphinPassthrough: data.dolphinPassthrough,
-    stores: catalog().map(({ id, name, category, description, icon, windowsUrl, linuxUrl, website, systems, userAdded, steamAppId }) => {
+    stores: catalog().filter(item => item.id !== 'wine' || platform === 'linux')
+      .map(({ id, name, category, description, icon, windowsUrl, linuxUrl, website, systems, userAdded, steamAppId }) => {
       const download = storeDownload({ id, windowsUrl, linuxUrl, website });
       const fromSteam = steamAppId || (id === 'obs' && installedPrograms.some(item => item.appId === '1905180'));
       return {
         id, name: userAdded ? name : translate(name), category, description: translate(description), icon, systems: translate(systems), userAdded, installed: Boolean(detected[id] || fromSteam),
         executableIcon: executableIcons.get(detected[id]?.file),
         custom: Boolean(data.apps[id]), available: Boolean(download), website: Boolean(website || download),
+        windowsShortcut: platform === 'linux' && /\.exe$/i.test(data.apps[id] || ''),
+        amazonInstaller: platform === 'linux' && isAmazonInstaller(data.apps[id]),
         canInstallFlatpak: platform === 'linux' && Boolean(flathubId(download)),
-        downloadSource: fromSteam && !detected[id] ? 'Steam' : download?.startsWith('https://flathub.org/') ? 'Flathub' : translate('Site oficial')
+        downloadSource: fromSteam && !detected[id] ? 'Steam' : id === 'wine' ? translate('Loja do Linux') :
+          download?.startsWith('https://flathub.org/') ? 'Flathub' : translate('Site oficial')
       };
     })
   };
@@ -283,6 +289,11 @@ handle('dolphin:passthrough', async enabled => {
 });
 handle('store:download', async id => {
   const store = getStore(id);
+  if (platform === 'linux' && id === 'wine') {
+    try { await openLinuxSoftware('wine'); }
+    catch { await openWebLink(store.linuxUrl, shell); }
+    return;
+  }
   const url = storeDownload(store);
   if (!url) throw new Error('Este aplicativo não está disponível para o seu sistema.');
   const appId = platform === 'linux' && flathubId(url);
@@ -294,6 +305,20 @@ handle('store:download', async id => {
   }
   try { await openWebLink(url, shell); }
   catch { throw new Error('Não foi possível abrir o navegador do sistema. Verifique o navegador padrão.'); }
+});
+handle('store:system-search', query => openLinuxSoftware(query));
+handle('store:heroic', async id => {
+  if (platform !== 'linux' || !['epic', 'gog', 'amazon'].includes(id)) throw new Error('Loja desconhecida.');
+  await scan();
+  const heroic = detected.heroic;
+  if (!heroic) {
+    await installFlatpak('com.heroicgameslauncher.hgl');
+    await scan();
+  }
+  const target = detected.heroic;
+  if (!target) throw new Error('O Heroic não foi encontrado após a instalação.');
+  await launch(target.file, target.args);
+  return state();
 });
 handle('store:website', async id => {
   const store = getStore(id);
@@ -378,17 +403,33 @@ handle('store:open', async id => {
   const steamId = store.steamAppId || (id === 'obs' && installedPrograms.some(game => game.appId === '1905180') ? '1905180' : '');
   if (!target && steamId && detected.steam) return launch(detected.steam.file, [...detected.steam.args, '-applaunch', steamId]);
   if (!target) throw new Error('Aplicativo não detectado. Atualize a lista ou vincule seu executável.');
+  if (platform === 'linux' && target.custom && /\.exe$/i.test(target.file)) {
+    const wine = await findLinuxCommand('wine', process.env);
+    if (!wine) throw new Error('Instale o Wine em Lojas → Ferramentas para abrir este executável.');
+    const cwd = path.dirname(target.file);
+    return launch(wine, [target.file], { cwd, hostCwd: cwd, wait: isAmazonInstaller(target.file) })
+      .catch(() => { throw new Error('O aplicativo não abriu pelo Wine. Use Testar teclado no Wine para verificar a compatibilidade.'); });
+  }
   if (id === 'dolphin') {
     await launch(target.file, target.args, { visible: true });
     return;
   }
   await launch(target.file, target.args);
 });
+handle('store:wine-keyboard', async id => {
+  getStore(id);
+  if (platform !== 'linux' || !/\.exe$/i.test(data.apps[id] || '')) throw new Error('Executável do Windows indisponível.');
+  const wine = await findLinuxCommand('wine', process.env);
+  if (!wine) throw new Error('Instale o Wine em Lojas → Ferramentas para abrir este executável.');
+  const { stdout } = await runHostTool(wine, ['--version'], { timeout: 6000 });
+  await launch(wine, ['notepad']);
+  return { version: stdout.trim().slice(0, 100) || 'Wine' };
+});
 handle('store:link', async (id, window) => {
   const store = getStore(id);
   const available = storeDownload(store);
   if (!available && !store.userAdded) throw new Error('Este aplicativo não está disponível para o seu sistema.');
-  const file = await selectExecutable(window);
+  const file = await selectExecutable(window, 'Selecionar executável', true);
   if (file) await updateData(copy => { copy.apps[id] = file; });
   await scan();
   return state();
@@ -403,7 +444,7 @@ handle('store:unlink', async id => {
   return state();
 });
 handle('store:add-custom', async (_, window) => {
-  const file = await selectExecutable(window);
+  const file = await selectExecutable(window, 'Selecionar executável', true);
   if (!file) return undefined;
   await updateData(copy => {
     if (Object.values(copy.apps).some(saved => samePath(saved, file))) {
@@ -456,13 +497,15 @@ async function protonSettings(id) {
   const game = protonGame(id);
   if (game.appId) {
     const config = await steamProtonConfig();
-    const tools = await steamProton.listSteamTools(config.root);
-    if (!tools.some(tool => tool.id === 'proton_experimental')) tools.unshift({ id: 'proton_experimental', name: 'Proton Experimental' });
+    const tools = await steamProton.listSteamTools(config.root, (await localRunners()).versions);
     return { steam: true, proton: steamProton.readSteamChoice(config.text, game.appId),
-      versions: tools.map(({ id, name }) => ({ path: id, name })) };
+      versions: tools.map(({ id, name, installed, folder }) => ({ path: id, name,
+        download: installed === false, register: Boolean(folder) })),
+      steamDownloads: tools.filter(tool => tool.appId && !tool.installed).map(({ id, name }) => ({ id, name })) };
   }
   return {
     ...await localRunners(), canChooseExecutable: !isWindowsGame(game),
+    steamDownloads: detected.steam ? steamProton.valveProton : [],
     ...data.gameProton[id]
   };
 }
@@ -609,6 +652,17 @@ handle('game-setup:save', async ({ title, windows, runner, argumentsText, mangoH
 
 handle('proton:settings', protonSettings);
 handle('proton:latest', id => { protonGame(id); return latestGEProton(); });
+handle('proton:releases', id => {
+  protonGame(id);
+  return openWebLink('https://github.com/GloriousEggroll/proton-ge-custom/releases', shell);
+});
+handle('proton:steam-download', async ({ id, toolId }) => {
+  protonGame(id);
+  const tool = steamProton.valveProton.find(entry => entry.id === toolId);
+  const steam = detected.steam;
+  if (!tool || !steam) throw new Error('A Steam não foi detectada. Vincule o executável em Lojas.');
+  await launch(steam.file, [...steam.args, 'steam://install/' + tool.appId]);
+});
 handle('proton:help', id => {
   protonGame(id, false);
   return openWebLink('https://github.com/Open-Wine-Components/umu-launcher#installation', shell);
@@ -635,13 +689,18 @@ handle('proton:add', async (id, window) => {
 });
 handle('proton:save', async ({ id, proton }) => {
   const game = protonGame(id);
-  const fallback = game.appId ? steamProton.defaultTool : 'GE-Proton';
-  if (proton !== fallback && !(await protonSettings(id)).versions.some(version => version.path === proton)) {
-    throw new Error('A versão selecionada do Proton não foi encontrada.');
-  }
   if (game.appId) {
-    await steamProton.saveSteamChoice(await steamProtonConfig(), game.appId, proton);
+    const config = await steamProtonConfig();
+    if (proton !== steamProton.defaultTool) {
+      const tool = (await steamProton.listSteamTools(config.root, (await localRunners()).versions)).find(item => item.id === proton);
+      if (!tool) throw new Error('A versão selecionada do Proton não foi encontrada.');
+      if (tool.folder) await steamProton.addSteamTool(config.root, tool.folder);
+    }
+    await steamProton.saveSteamChoice(config, game.appId, proton);
     return protonSettings(id);
+  }
+  if (proton !== 'GE-Proton' && !(await localRunners()).versions.some(version => version.path === proton)) {
+    throw new Error('A versão selecionada do Proton não foi encontrada.');
   }
   await updateData(copy => { copy.gameProton[id] = { ...copy.gameProton[id], proton }; });
   return protonSettings(id);
