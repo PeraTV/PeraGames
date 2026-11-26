@@ -327,7 +327,39 @@ Instalando pelo Flatpak…|Installing with Flatpak…
 Instalação concluída.|Installation complete.
 O Flatpak não conseguiu instalar {id}.|Flatpak could not install {id}.
 Copiar link|Copy link
-Link copiado.|Link copied.`.split('\n').map(line => line.split('|')));
+Link copiado.|Link copied.
+Escolher executável do Windows|Choose a Windows executable
+Voltar ao executável original|Use the original executable
+Executável do Windows: {file}|Windows executable: {file}
+Este jogo abre no Linux. Para usar Proton, indique o executável da versão Windows.|This game launches natively on Linux. Choose its Windows executable to use Proton.
+Este jogo já tem um executável do Windows.|This game already has a Windows executable.
+Adicionar jogo ou aplicativo|Add game or application
+Nome do jogo ou aplicativo|Game or application title
+Plataforma|Platform
+Wine ou Proton|Wine or Proton
+Escolher pasta do prefixo|Choose prefix folder
+Escolher executável do jogo|Choose game executable
+Argumentos de inicialização (um por linha)|Launch arguments (one per line)
+Rodar instalador primeiro|Run installer first
+Salvar na biblioteca|Save to library
+Nenhum executável selecionado.|No executable selected.
+Prévia da capa|Cover preview
+Instalador encerrado. Escolha o executável instalado para salvar.|Installer closed. Choose the installed executable to finish.
+Aguardando o instalador do Windows…|Waiting for the Windows installer…
+Salvando na biblioteca…|Saving to library…
+Abra Adicionar jogo para configurar o aplicativo.|Open Add game to configure the application.
+Selecione uma versão do Wine ou Proton.|Select a Wine or Proton version.
+A versão selecionada do Wine não foi encontrada.|The selected Wine version could not be found.
+A versão selecionada do Proton ou Wine não foi encontrada.|The selected Proton or Wine version could not be found.
+Wine do sistema|System Wine
+Selecionar pasta do prefixo Wine|Choose the Wine prefix folder
+Escolha um prefixo Wine existente ou uma pasta vazia.|Choose an existing Wine prefix or an empty folder.
+Selecionar instalador do Windows|Select the Windows installer
+O instalador do Windows não terminou normalmente.|The Windows installer did not finish successfully.
+Escolha o executável que deve abrir o jogo.|Choose the executable that should launch the game.
+O programa {name} está ativado neste jogo, mas não foi encontrado.|{name} is enabled for this game but could not be found.
+Editar inicialização|Edit launch settings
+Este jogo tem configurações gerenciadas pela sua biblioteca de origem.|This game is managed by its original library.`.split('\n').map(line => line.split('|')));
 
   function languageFor(locale) {
     return /^pt(?:[-_]|$)/i.test(locale || 'pt-BR') ? 'pt-BR' : 'en';

@@ -284,7 +284,7 @@ function fillGames(id, games, filtered) {
   const empty = el('div', 'empty');
   empty.append(el('p', '', message));
   if (loaded && !filtered && !romLibrary) {
-    empty.append(button(t('Adicionar jogo'), node => perform(node, api.addGame), 'button primary'));
+    empty.append(button(t('Adicionar jogo'), addGameFromLibrary, 'button primary'));
   }
   grid.append(empty);
 }
@@ -338,6 +338,7 @@ function renderGameDetails() {
   byId('game-query-label').hidden = Boolean(game.appId);
   byId('game-proton').hidden = !game.canUseProton;
   byId('game-proton-open').hidden = !game.canUseProton;
+  byId('game-setup-edit').hidden = !game.canEditSetup;
 }
 
 function showProtonSettings(settings) {
@@ -358,6 +359,11 @@ function showProtonSettings(settings) {
     : t('Instale o umu-launcher no Linux para iniciar jogos com Proton.');
   byId('proton-help').hidden = settings.steam || settings.umu;
   byId('proton-prefix-settings').hidden = settings.steam;
+  byId('proton-executable-settings').hidden = !settings.canChooseExecutable;
+  byId('proton-executable-text').textContent = settings.executable
+    ? t('Executável do Windows: {file}', { file: settings.executable })
+    : t('Este jogo abre no Linux. Para usar Proton, indique o executável da versão Windows.');
+  byId('proton-executable-reset').hidden = !settings.executable;
   byId('proton-prefix-text').textContent = settings.prefix
     ? t('Prefixo Wine: {folder}', { folder: settings.prefix }) : t('Prefixo separado para este jogo');
   byId('proton-prefix-reset').hidden = !settings.prefix;
@@ -415,6 +421,7 @@ function showGameDetails(game) {
   delete protonVersion.dataset.saved;
   byId('proton-note').textContent = '';
   byId('proton-prefix-settings').hidden = true;
+  byId('proton-executable-settings').hidden = true;
   byId('proton-help').hidden = true;
   byId('proton-status').textContent = '';
   byId('proton-release').textContent = '';
@@ -422,6 +429,76 @@ function showGameDetails(game) {
   byId('game-editor').showModal();
   if (!game.info?.customDescription && (!game.info?.description ||
       (game.info.language || 'pt-BR') !== document.documentElement.lang)) byId('game-lookup').click();
+}
+
+let gameSetup;
+let setupBusy = false;
+function setupIsWindows() { return byId('game-setup-platform').value === 'windows'; }
+
+function renderGameSetup() {
+  const windows = setupIsWindows();
+  byId('game-setup-windows').hidden = !windows;
+  byId('game-setup-install').hidden = !windows;
+  byId('game-setup-save').disabled = setupBusy || !gameSetup?.file;
+  byId('game-setup-executable-text').textContent = gameSetup?.file || t('Nenhum executável selecionado.');
+  byId('game-setup-prefix-text').textContent = gameSetup?.prefix || gameSetup?.defaultPrefix || '';
+  const cover = byId('game-setup-cover-preview');
+  cover.hidden = !gameSetup?.cover;
+  if (gameSetup?.cover) cover.src = gameSetup.cover;
+  else cover.removeAttribute('src');
+}
+
+function setSetupRunners(versions, selection) {
+  const select = byId('game-setup-runner');
+  const value = selection || select.value || 'GE-Proton';
+  select.replaceChildren(new Option(t('GE-Proton mais recente (automático)'), 'GE-Proton'),
+    ...versions.map(({ path, name }) => new Option(t(name), path)));
+  select.value = value;
+}
+
+async function setupAction(action, message = 'Consultando…') {
+  if (setupBusy) return;
+  setupBusy = true;
+  const controls = [...byId('game-setup-dialog').querySelectorAll('button, input, select, textarea')];
+  controls.forEach(control => { control.disabled = true; });
+  const status = byId('game-setup-status');
+  status.textContent = t(message);
+  try {
+    const next = await action();
+    if (next) {
+      gameSetup = { ...gameSetup, ...next };
+      if (next.versions) setSetupRunners(next.versions, next.selectedRunner);
+    }
+    status.textContent = next?.installed ? t('Instalador encerrado. Escolha o executável instalado para salvar.') : '';
+  } catch (error) { status.textContent = t(error.message); }
+  finally {
+    setupBusy = false;
+    controls.forEach(control => { control.disabled = false; });
+    renderGameSetup();
+  }
+}
+
+function addGameFromLibrary(node) {
+  if (state.platform !== 'linux' || !api.startGameSetup) return perform(node, api.addGame);
+  openGameSetup();
+}
+
+function openGameSetup(id) {
+  gameSetup = undefined;
+  byId('game-setup-form').reset();
+  byId('game-setup-title').textContent = t(id ? 'Editar inicialização' : 'Adicionar jogo ou aplicativo');
+  byId('game-setup-runner').replaceChildren();
+  renderGameSetup();
+  byId('game-setup-dialog').showModal();
+  setupAction(async () => {
+    const setup = await api.startGameSetup(id);
+    byId('game-setup-platform').value = setup.windows === false ? 'linux' : 'windows';
+    byId('game-setup-name').value = setup.title || '';
+    byId('game-setup-args').value = setup.argumentsText || '';
+    byId('game-setup-mangohud').checked = Boolean(setup.mangoHud);
+    byId('game-setup-gamemode').checked = Boolean(setup.gameMode);
+    return setup;
+  });
 }
 
 function highlightGames() {
@@ -1209,7 +1286,39 @@ byId('all-games').addEventListener('click', () => switchPage('library'));
 byId('search').addEventListener('input', render);
 byId('app-search').addEventListener('input', renderCatalog);
 byId('favorites-only').addEventListener('change', render);
-byId('add-game').addEventListener('click', event => perform(event.currentTarget, api.addGame));
+byId('add-game').addEventListener('click', event => addGameFromLibrary(event.currentTarget));
+byId('game-setup-close').addEventListener('click', () => byId('game-setup-dialog').close());
+byId('game-setup-edit').addEventListener('click', () => {
+  byId('game-editor').close();
+  openGameSetup(selectedGame);
+});
+byId('game-setup-dialog').addEventListener('cancel', event => { if (setupBusy) event.preventDefault(); });
+byId('game-setup-platform').addEventListener('change', () => {
+  if (gameSetup) gameSetup.file = setupIsWindows() ? gameSetup.windowsFile : gameSetup.linuxFile;
+  renderGameSetup();
+});
+for (const [id, kind] of [['executable', 'game'], ['cover', 'cover'], ['prefix', 'prefix'], ['proton', 'proton']]) {
+  byId('game-setup-' + id).addEventListener('click', () => {
+    setupAction(() => api.pickGameSetup({ kind, windows: setupIsWindows() }));
+  });
+}
+byId('game-setup-install').addEventListener('click', () => {
+  setupAction(() => api.runGameInstaller({ runner: byId('game-setup-runner').value }), 'Aguardando o instalador do Windows…');
+});
+byId('game-setup-form').addEventListener('submit', event => {
+  event.preventDefault();
+  setupAction(async () => {
+    state = await api.saveGameSetup({
+      title: byId('game-setup-name').value,
+      windows: setupIsWindows(), runner: byId('game-setup-runner').value,
+      argumentsText: byId('game-setup-args').value,
+      mangoHud: byId('game-setup-mangohud').checked,
+      gameMode: byId('game-setup-gamemode').checked
+    });
+    render();
+    byId('game-setup-dialog').close();
+  }, 'Salvando na biblioteca…');
+});
 byId('refresh-games').addEventListener('click', event => perform(event.currentTarget, api.refresh, 'Biblioteca atualizada.'));
 async function checkAppUpdate() {
   const status = byId('app-update-status');
@@ -1406,6 +1515,8 @@ byId('proton-latest').addEventListener('click', async event => {
 byId('proton-help').addEventListener('click', () => changeProton(api.protonHelp));
 byId('proton-prefix').addEventListener('click', () => changeProton(id => api.protonPrefix({ id })));
 byId('proton-prefix-reset').addEventListener('click', () => changeProton(id => api.protonPrefix({ id, reset: true })));
+byId('proton-executable').addEventListener('click', () => changeProton(id => api.protonExecutable({ id })));
+byId('proton-executable-reset').addEventListener('click', () => changeProton(id => api.protonExecutable({ id, reset: true })));
 byId('game-lookup').addEventListener('click', async event => {
   const node = event.currentTarget;
   const label = node.textContent;

@@ -8,7 +8,7 @@ const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { stores, romFormats, romArguments } = require('./catalog');
 const { getSteamRoots, steamGames, detectStores, fileExists, launch, isMacBundle, macApps, findLinuxCommand, openWebLink, flathubId, installFlatpak } = require('./system');
-const { isWindowsGame, isProtonDirectory, findProtonVersions, latestGEProton, protonEnvironment } = require('./proton');
+const { isWindowsGame, isProtonDirectory, findProtonVersions, findWineVersions, latestGEProton, windowsRunner } = require('./proton');
 const linuxStores = require('./linux-stores');
 const steamProton = require('./steam-proton');
 const { browseSteam, steamAssets, lookupGame, cleanTitle, featuredSteamArt } = require('./game-info');
@@ -46,6 +46,7 @@ let pendingWrite = Promise.resolve();
 let pendingScan;
 const storeCatalogs = new Map();
 const storeOperations = new Set();
+const gameSetups = new WeakMap();
 
 async function loadData() {
   const file = path.join(app.getPath('userData'), 'library.json');
@@ -151,13 +152,14 @@ function scan() {
 }
 
 function state() {
-  const gameState = ({ id, appId, name, source, emulator, file, store }) => {
+  const gameState = ({ id, appId, name, source, emulator, store }) => {
     const online = data.gameDetails[id];
     const steam = steamAssets(steamItems.get(appId));
     const rom = romAssets.get(id);
     return {
       id, appId, name: rom?.name || name, source, emulator, system: rom?.system, discId: rom?.id,
-      canUseProton: platform === 'linux' && (Boolean(appId) || isWindowsGame({ file, emulator, appId, store })),
+      canUseProton: platform === 'linux' && !emulator,
+      canEditSetup: platform === 'linux' && !appId && !emulator && !store,
       artwork: [...(rom?.art || []), rom && online?.cover, ...featuredSteamArt(appId), steam.cover, online?.coverFallback].filter(Boolean),
       screens: rom?.screens,
       favorite: data.favorites.includes(id), lastPlayed: data.played[id] || 0,
@@ -420,7 +422,7 @@ handle('game:add', async (_, window) => {
 });
 function protonGame(id, includeSteam = true) {
   const game = getGame(id);
-  if (platform !== 'linux' || !(isWindowsGame(game) || (includeSteam && game.appId))) {
+  if (platform !== 'linux' || game.emulator || (!includeSteam && game.appId)) {
     throw new Error('A configuração de Proton está disponível no Linux.');
   }
   return game;
@@ -429,6 +431,18 @@ function protonGame(id, includeSteam = true) {
 async function steamProtonConfig() {
   const roots = await getSteamRoots(platform, process.env, os.homedir());
   return steamProton.findSteamConfig(roots, Boolean(detected.steam?.args.includes('com.valvesoftware.Steam')));
+}
+
+async function localRunners() {
+  const home = os.homedir();
+  const steamRoots = await getSteamRoots(platform, process.env, home);
+  if (data.apps.steam) steamRoots.unshift(path.dirname(data.apps.steam));
+  const [proton, wine, umu] = await Promise.all([
+    findProtonVersions({ home, steamRoots, custom: data.protonFolders }),
+    findWineVersions(home),
+    findLinuxCommand('umu-run', process.env)
+  ]);
+  return { versions: [...proton, ...wine], umu: Boolean(umu) };
 }
 
 async function protonSettings(id) {
@@ -440,15 +454,151 @@ async function protonSettings(id) {
     return { steam: true, proton: steamProton.readSteamChoice(config.text, game.appId),
       versions: tools.map(({ id, name }) => ({ path: id, name })) };
   }
-  const home = os.homedir();
-  const steamRoots = await getSteamRoots(platform, process.env, home);
-  if (data.apps.steam) steamRoots.unshift(path.dirname(data.apps.steam));
-  const [versions, umu] = await Promise.all([
-    findProtonVersions({ home, steamRoots, custom: data.protonFolders }),
-    findLinuxCommand('umu-run', process.env)
-  ]);
-  return { versions, umu: Boolean(umu), ...data.gameProton[id] };
+  return {
+    ...await localRunners(), canChooseExecutable: !isWindowsGame(game),
+    ...data.gameProton[id]
+  };
 }
+
+const defaultWinePrefix = id => path.join(app.getPath('userData'), 'prefixes', id);
+
+function getGameSetup(window) {
+  const setup = gameSetups.get(window);
+  if (platform !== 'linux' || !setup) throw new Error('Abra Adicionar jogo para configurar o aplicativo.');
+  return setup;
+}
+
+async function chooseWindowsExecutable(window, title, defaultPath) {
+  const result = await dialog.showOpenDialog(window, {
+    title: translate(title), defaultPath, properties: ['openFile'],
+    filters: [{ name: translate('Aplicativos do Windows'), extensions: ['exe'] }]
+  });
+  if (result.canceled) return;
+  const file = result.filePaths[0];
+  if (!/\.exe$/i.test(file) || !await fileExists(file)) throw new Error('Selecione um aplicativo com extensão .exe.');
+  return file;
+}
+
+async function setupRunner(selection, prefix) {
+  const { versions } = await localRunners();
+  if (selection !== 'GE-Proton' && !versions.some(version => version.path === selection)) {
+    throw new Error('A versão selecionada do Proton ou Wine não foi encontrada.');
+  }
+  return windowsRunner(selection, prefix, os.homedir());
+}
+
+function gameSetupView(setup, windows) {
+  return { ...setup, file: windows ? setup.windowsFile : setup.linuxFile };
+}
+
+async function withLaunchTools(file, args, game) {
+  const tools = [['mangohud', game.mangoHud], ['gamemoderun', game.gameMode]];
+  for (const [name, enabled] of tools) {
+    if (!enabled) continue;
+    const wrapper = await findLinuxCommand(name, process.env);
+    if (!wrapper) throw new Error(translate('O programa {name} está ativado neste jogo, mas não foi encontrado.', { name }));
+    args = [file, ...args];
+    file = wrapper;
+  }
+  return { file, args };
+}
+
+handle('game-setup:start', async (id, window) => {
+  if (platform !== 'linux') throw new Error('A configuração de Proton está disponível no Linux.');
+  const game = id ? getGame(id) : null;
+  if (game && (game.appId || game.emulator || game.store)) throw new Error('Este jogo tem configurações gerenciadas pela sua biblioteca de origem.');
+  const setup = { id: game?.id || randomUUID(), edit: Boolean(game) };
+  setup.defaultPrefix = defaultWinePrefix(setup.id);
+  if (game) {
+    const compatibility = data.gameProton[game.id] || {};
+    setup.title = game.name;
+    setup.linuxFile = isWindowsGame(game) ? undefined : game.file;
+    setup.windowsFile = compatibility.executable || (isWindowsGame(game) ? game.file : undefined);
+    setup.prefix = compatibility.prefix;
+    setup.cover = data.gameCovers[game.id];
+    setup.selectedRunner = compatibility.proton;
+    setup.argumentsText = (game.args || []).join('\n');
+    setup.mangoHud = game.mangoHud;
+    setup.gameMode = game.gameMode;
+  }
+  gameSetups.set(window, setup);
+  const windows = !game || Boolean(setup.windowsFile);
+  return { ...gameSetupView(setup, windows), windows, ...await localRunners() };
+});
+handle('game-setup:pick', async ({ kind, windows }, window) => {
+  const setup = getGameSetup(window);
+  if (kind === 'cover') {
+    setup.cover = await pickImage(window, 'Escolher capa do jogo', 900) || setup.cover;
+  } else if (kind === 'prefix') {
+    const result = await dialog.showOpenDialog(window, {
+      title: translate('Selecionar pasta do prefixo Wine'), properties: ['openDirectory', 'createDirectory']
+    });
+    if (!result.canceled) {
+      const folder = result.filePaths[0];
+      if ((await fs.readdir(folder)).length && !await fileExists(path.join(folder, 'system.reg'))) {
+        throw new Error('Escolha um prefixo Wine existente ou uma pasta vazia.');
+      }
+      setup.prefix = folder;
+    }
+  } else if (kind === 'proton') {
+    const result = await dialog.showOpenDialog(window, {
+      title: translate('Selecionar pasta do Proton'), properties: ['openDirectory']
+    });
+    if (!result.canceled) {
+      const folder = result.filePaths[0];
+      if (!await isProtonDirectory(folder)) throw new Error('Escolha a pasta que contém o arquivo proton.');
+      await updateData(copy => { if (!copy.protonFolders.includes(folder)) copy.protonFolders.push(folder); });
+      return { ...gameSetupView(setup, windows), ...await localRunners(), selectedRunner: folder };
+    }
+  } else if (kind === 'game') {
+    const file = windows
+      ? await chooseWindowsExecutable(window, 'Escolher executável do Windows', path.join(setup.prefix || setup.defaultPrefix, 'drive_c'))
+      : await selectExecutable(window);
+    if (file) setup[windows ? 'windowsFile' : 'linuxFile'] = file;
+  }
+  return gameSetupView(setup, windows);
+});
+handle('game-setup:install', async ({ runner }, window) => {
+  const setup = getGameSetup(window);
+  const selected = await setupRunner(runner, setup.prefix || setup.defaultPrefix);
+  const installer = await chooseWindowsExecutable(window, 'Selecionar instalador do Windows');
+  if (!installer) return gameSetupView(setup, true);
+  if (!setup.prefix) await fs.mkdir(setup.defaultPrefix, { recursive: true });
+  const cwd = path.dirname(installer);
+  try { await launch(selected.file, [installer], { cwd, hostCwd: cwd, environment: selected.environment, wait: true }); }
+  catch { throw new Error('O instalador do Windows não terminou normalmente.'); }
+  setup.installed = true;
+  return gameSetupView(setup, true);
+});
+handle('game-setup:save', async ({ title, windows, runner, argumentsText, mangoHud, gameMode }, window) => {
+  const setup = getGameSetup(window);
+  const file = windows ? setup.windowsFile : setup.linuxFile;
+  if (!await fileExists(file)) throw new Error('Escolha o executável que deve abrir o jogo.');
+  if (windows) {
+    if (!/\.exe$/i.test(file)) throw new Error('Selecione um aplicativo com extensão .exe.');
+    if (runner !== 'GE-Proton' && !(await localRunners()).versions.some(version => version.path === runner)) {
+      throw new Error('A versão selecionada do Proton ou Wine não foi encontrada.');
+    }
+  } else {
+    await fs.access(file, constants.X_OK).catch(() => { throw new Error('O arquivo selecionado precisa ter permissão de execução.'); });
+  }
+  await updateData(copy => {
+    if (copy.games.some(game => game.id !== setup.id && samePath(game.file, file))) throw new Error('Este jogo já está na biblioteca.');
+    const name = (typeof title === 'string' && title.trim().slice(0, 160)) || path.parse(file).name;
+    const args = typeof argumentsText === 'string' ? argumentsText.slice(0, 2048).split(/\r?\n/).filter(arg => arg.trim() && !arg.includes('\0')) : [];
+    const entry = { id: setup.id, file, name, source: 'Local', args, mangoHud: mangoHud === true, gameMode: gameMode === true };
+    const index = copy.games.findIndex(game => game.id === setup.id);
+    if (index === -1) {
+      if (setup.edit) throw new Error('Jogo não encontrado. Atualize a biblioteca.');
+      copy.games.push(entry);
+    } else copy.games[index] = entry;
+    if (setup.cover) copy.gameCovers[setup.id] = setup.cover;
+    if (windows) copy.gameProton[setup.id] = { proton: runner, prefix: setup.prefix };
+    else if (copy.gameProton[setup.id]) delete copy.gameProton[setup.id].executable;
+  });
+  gameSetups.delete(window);
+  return state();
+});
 
 handle('proton:settings', protonSettings);
 handle('proton:latest', id => { protonGame(id); return latestGEProton(); });
@@ -504,8 +654,17 @@ handle('proton:prefix', async ({ id, reset }, window) => {
   await updateData(copy => { copy.gameProton[id] = { ...copy.gameProton[id], prefix }; });
   return protonSettings(id);
 });
+handle('proton:executable', async ({ id, reset }, window) => {
+  const game = protonGame(id, false);
+  if (isWindowsGame(game)) throw new Error('Este jogo já tem um executável do Windows.');
+  const executable = reset ? undefined : await chooseWindowsExecutable(window, 'Escolher executável do Windows');
+  if (!reset && !executable) return protonSettings(id);
+  await updateData(copy => { copy.gameProton[id] = { ...copy.gameProton[id], executable }; });
+  return protonSettings(id);
+});
 handle('game:play', async (id, window) => {
   const game = getGame(id);
+  const compatibility = data.gameProton[id] || {};
   if (game.emulator === 'android') {
     if (platform !== 'win32' || path.extname(game.file).toLowerCase() !== '.lnk') throw new Error('Este jogo precisa de um atalho do Windows.');
     if (!await fileExists(game.file)) throw new Error('O atalho do Android foi movido ou removido. Importe o atalho novamente.');
@@ -533,27 +692,30 @@ handle('game:play', async (id, window) => {
     if (!steam) throw new Error('A Steam não foi detectada. Vincule o executável em Lojas.');
     if (platform === 'darwin') await shell.openExternal('steam://rungameid/' + game.appId);
     else await launch(steam.file, [...steam.args, '-applaunch', game.appId]);
-  } else if (platform === 'linux' && isWindowsGame(game)) {
-    if (!game.store && !await fileExists(game.file)) throw new Error('O executável foi movido ou removido.');
-    const umu = await findLinuxCommand('umu-run', process.env);
-    if (!umu) throw new Error('Instale o umu-launcher para iniciar este jogo com Proton.');
-    const { proton, prefix } = data.gameProton[id] || {};
-    if (proton && proton !== 'GE-Proton' && !await isProtonDirectory(proton)) {
-      throw new Error('A versão selecionada do Proton não foi encontrada.');
-    }
-    const winePrefix = prefix || path.join(app.getPath('userData'), 'prefixes', id);
-    if (prefix && !await fileExists(path.join(prefix, 'system.reg'))) {
+  } else if (platform === 'linux' && (isWindowsGame(game) || compatibility.executable)) {
+    const executable = compatibility.executable || game.file;
+    if (!game.store && !await fileExists(executable)) throw new Error('O executável foi movido ou removido.');
+    const { proton, prefix } = compatibility;
+    const winePrefix = prefix || defaultWinePrefix(id);
+    if (prefix && !await fs.stat(prefix).then(stats => stats.isDirectory(), () => false)) {
       throw new Error('O prefixo Wine selecionado não foi encontrado.');
     }
-    const environment = protonEnvironment(proton, winePrefix);
+    const runner = await windowsRunner(proton, winePrefix, os.homedir());
+    if (!prefix) await fs.mkdir(winePrefix, { recursive: true });
     if (game.store) {
       const config = await linuxStore(game.store);
       if (!config.ready) throw new Error('Instale o componente da loja para continuar.');
-      await linuxStores.play(game.store, config, { id: game.storeId, folder: game.installFolder, umu, environment });
+      await linuxStores.play(game.store, config, { id: game.storeId, folder: game.installFolder, umu: runner.file, environment: runner.environment });
     } else {
-      const cwd = path.dirname(game.file);
-      await launch(umu, [game.file], { cwd, hostCwd: cwd, environment });
+      const cwd = path.dirname(executable);
+      const command = await withLaunchTools(runner.file, [executable, ...(game.args || [])], game);
+      await launch(command.file, command.args, { cwd, hostCwd: cwd, environment: runner.environment });
     }
+  } else if (platform === 'linux') {
+    if (!await runnable(game.file)) throw new Error('O executável foi movido ou removido.');
+    const cwd = path.dirname(game.file);
+    const command = await withLaunchTools(game.file, game.args || [], game);
+    await launch(command.file, command.args, { cwd, hostCwd: cwd });
   } else {
     if (!await runnable(game.file)) throw new Error('O executável foi movido ou removido.');
     await launch(game.file);

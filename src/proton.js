@@ -2,7 +2,7 @@
 
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const { fileExists } = require('./system');
+const { fileExists, findLinuxCommand } = require('./system');
 
 const automaticProton = 'GE-Proton';
 const isWindowsGame = game => Boolean(game && !game.emulator && !game.appId &&
@@ -53,4 +53,39 @@ function protonEnvironment(proton, prefix) {
   return { PROTONPATH: proton || automaticProton, WINEPREFIX: prefix };
 }
 
-module.exports = { automaticProton, isWindowsGame, isProtonDirectory, findProtonVersions, latestGEProton, protonEnvironment };
+async function findWineVersions(home) {
+  const roots = [
+    path.join(home, '.local', 'share', 'lutris', 'runners', 'wine'),
+    path.join(home, '.config', 'heroic', 'tools', 'wine'),
+    path.join(home, '.var', 'app', 'com.heroicgameslauncher.hgl', 'config', 'heroic', 'tools', 'wine')
+  ];
+  const wine = await findLinuxCommand('wine', process.env);
+  const versions = wine ? [{ path: 'wine-system', name: 'Wine do sistema' }] : [];
+  for (const root of roots) {
+    for (const name of await fs.readdir(root).catch(() => [])) {
+      const binary = path.join(root, name, 'bin', 'wine');
+      if (await fileExists(binary)) versions.push({ path: 'wine:' + binary, name: 'Wine · ' + name });
+    }
+  }
+  return versions;
+}
+
+async function windowsRunner(selection, prefix, home) {
+  const runner = selection || automaticProton;
+  if (runner === 'wine-system' || runner.startsWith('wine:')) {
+    const file = runner === 'wine-system' ? await findLinuxCommand('wine', process.env) : runner.slice(5);
+    if (!file || (runner !== 'wine-system' && !(await findWineVersions(home)).some(version => version.path === runner))) {
+      throw new Error('A versão selecionada do Wine não foi encontrada.');
+    }
+    return { file, environment: { WINEPREFIX: prefix } };
+  }
+  if (runner !== automaticProton && !await isProtonDirectory(runner)) {
+    throw new Error('A versão selecionada do Proton não foi encontrada.');
+  }
+  const file = await findLinuxCommand('umu-run', process.env);
+  if (!file) throw new Error('Instale o umu-launcher para iniciar este jogo com Proton.');
+  return { file, environment: protonEnvironment(runner, prefix) };
+}
+
+module.exports = { automaticProton, isWindowsGame, isProtonDirectory, findProtonVersions, findWineVersions,
+  latestGEProton, protonEnvironment, windowsRunner };

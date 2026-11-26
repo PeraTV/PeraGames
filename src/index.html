@@ -221,6 +221,7 @@
           <button class="button primary" id="game-play">▶ Jogar</button>
           <button class="button outline" id="game-favorite" type="button" aria-pressed="false">☆ Favoritar</button>
           <button class="button outline" id="game-proton-open" type="button" hidden>Proton</button>
+          <button class="button outline" id="game-setup-edit" type="button" hidden>Editar inicialização</button>
           <button class="button outline" id="game-info-source" hidden></button>
         </div>
       </div>
@@ -237,6 +238,13 @@
         <details id="game-proton" hidden>
           <summary>Compatibilidade com Proton</summary>
           <p id="proton-note"></p>
+          <div id="proton-executable-settings" hidden>
+            <p id="proton-executable-text"></p>
+            <div class="actions">
+              <button class="button" id="proton-executable">Escolher executável do Windows</button>
+              <button class="button" id="proton-executable-reset" hidden>Voltar ao executável original</button>
+            </div>
+          </div>
           <p id="proton-release" role="status"></p>
           <label>Versão do Proton <select id="proton-version" disabled></select></label>
           <div class="actions">
@@ -327,6 +335,50 @@
     <div class="actions dialog-actions">
       <button class="button primary" id="gallery-add-launcher">Adicionar programa manualmente</button>
     </div>
+  </dialog>
+  <dialog id="game-setup-dialog" aria-labelledby="game-setup-title">
+    <div class="section-head">
+      <h2 id="game-setup-title">Adicionar jogo ou aplicativo</h2>
+      <button type="button" class="button" id="game-setup-close" aria-label="Fechar">×</button>
+    </div>
+    <form id="game-setup-form">
+      <div class="setup-grid">
+        <div class="setup-cover">
+          <img id="game-setup-cover-preview" alt="Prévia da capa" hidden>
+          <button type="button" class="button" id="game-setup-cover">Escolher capa</button>
+        </div>
+        <div class="setup-fields">
+          <label>Nome do jogo ou aplicativo <input id="game-setup-name" maxlength="160"></label>
+          <label>Plataforma
+            <select id="game-setup-platform"><option value="windows">Windows</option><option value="linux">Linux</option></select>
+          </label>
+          <div id="game-setup-windows">
+            <label>Wine ou Proton <select id="game-setup-runner"></select></label>
+            <div class="actions">
+              <button type="button" class="button" id="game-setup-proton">Adicionar Proton</button>
+              <button type="button" class="button" id="game-setup-prefix">Escolher pasta do prefixo</button>
+            </div>
+            <p id="game-setup-prefix-text"></p>
+          </div>
+          <div class="actions">
+            <button type="button" class="button" id="game-setup-executable">Escolher executável do jogo</button>
+          </div>
+          <p id="game-setup-executable-text"></p>
+          <label>Argumentos de inicialização (um por linha)
+            <textarea id="game-setup-args" rows="2" maxlength="2048"></textarea>
+          </label>
+          <div class="actions">
+            <label class="favorite-filter"><input type="checkbox" id="game-setup-mangohud"> MangoHud</label>
+            <label class="favorite-filter"><input type="checkbox" id="game-setup-gamemode"> GameMode</label>
+          </div>
+        </div>
+      </div>
+      <p id="game-setup-status" role="status"></p>
+      <div class="actions dialog-actions">
+        <button type="button" class="button outline" id="game-setup-install">Rodar instalador primeiro</button>
+        <button type="submit" class="button primary" id="game-setup-save" disabled>Salvar na biblioteca</button>
+      </div>
+    </form>
   </dialog>
   <dialog id="linux-store-dialog" aria-labelledby="linux-store-title">
     <div class="section-head">

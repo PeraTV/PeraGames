@@ -353,8 +353,15 @@ body[data-palette]:not([data-palette="amber"]) :focus-visible { outline-color: v
 .game-card[data-system] .game-art img { object-fit: contain; object-position: center; }
 #game-poster { object-fit: scale-down; object-position: center; }
 #game-proton .actions { margin-top: 8px; flex-wrap: wrap; }
-#proton-prefix-text { overflow-wrap: anywhere; }
+#proton-prefix-text, #proton-executable-text { overflow-wrap: anywhere; }
 #linux-store-dialog { width: min(720px, calc(100% - 32px)); max-height: min(85vh, 800px); overflow: auto; }
+#game-setup-dialog { width: min(780px, calc(100% - 32px)); max-height: calc(100% - 32px); overflow: auto; }
+.setup-grid { display: grid; grid-template-columns: minmax(120px, 25%) minmax(0, 1fr); gap: 20px; }
+.setup-cover { display: grid; align-content: start; gap: 12px; }
+.setup-cover img { width: 100%; aspect-ratio: 2 / 3; object-fit: contain; background: var(--surface); border-radius: 8px; }
+.setup-fields p { margin-block: 7px 12px; overflow-wrap: anywhere; font-size: .9em; }
+#game-setup-windows .actions { margin-top: 7px; }
+#game-setup-status { min-height: 1.4em; }
 #linux-store-connect { display: flex; align-items: end; gap: 8px; margin-block: 12px; }
 #linux-store-connect label { flex: 1; min-width: 0; }
 #linux-store-games { display: grid; gap: 6px; margin-top: 12px; }
