@@ -1,6 +1,6 @@
 {
-  "version": "0.22.12",
+  "version": "0.22.13",
   "changes": [
-    "No Linux, o atualizador Flatpak identifica corretamente a instalação do usuário mesmo quando há várias branches do PeraGames instaladas."
+    "Lutris e Playnite foram removidos do catálogo interno de ferramentas e dos atalhos padrão."
   ]
 }

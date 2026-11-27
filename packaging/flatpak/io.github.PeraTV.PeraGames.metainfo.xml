@@ -37,6 +37,13 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.22.13" date="2026-11-27">
+      <description>
+        <p>Removed the built-in Lutris and Playnite listings and shortcuts.</p>
+        <p xml:lang="pt-BR">Lutris e Playnite foram removidos do catálogo e dos atalhos padrão.</p>
+      </description>
+      <url>https://github.com/PeraTV/PeraGames/releases/tag/v0.22.13</url>
+    </release>
     <release version="0.22.12" date="2026-11-27">
       <description>
         <p>The Flatpak updater detects user installations even when multiple PeraGames branches are installed.</p>

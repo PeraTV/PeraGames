@@ -65,12 +65,6 @@ const stores = [
     linuxCommands: ['winecfg']
   },
   {
-    id: 'lutris', name: 'Lutris', category: 'Ferramentas', icon: 'controller', color: '#e4b174',
-    description: 'Gerencie jogos e configurações do Wine no Linux.',
-    linuxUrl: 'https://lutris.net/downloads/',
-    linuxCommands: ['lutris'], flatpaks: ['net.lutris.Lutris']
-  },
-  {
     id: 'goverlay', name: 'GOverlay', category: 'Ferramentas', icon: 'monitor',
     description: 'Configure o MangoHud para acompanhar FPS, temperatura e uso de CPU e GPU.',
     website: 'https://github.com/benjamimgois/goverlay', linuxUrl: 'https://flathub.org/apps/io.github.benjamimgois.goverlay',
@@ -108,12 +102,6 @@ const stores = [
     website: 'https://obsproject.com/', windowsUrl: 'https://obsproject.com/download',
     linuxUrl: 'https://flathub.org/apps/com.obsproject.Studio',
     windowsPaths: ['obs-studio/bin/64bit/obs64.exe'], linuxCommands: ['obs'], flatpaks: ['com.obsproject.Studio']
-  },
-  {
-    id: 'playnite', name: 'Playnite', category: 'Ferramentas',
-    description: 'Organize jogos de diferentes lojas em uma biblioteca no Windows.',
-    website: 'https://playnite.link/', windowsUrl: 'https://playnite.link/download.html',
-    windowsPaths: ['Playnite/Playnite.DesktopApp.exe']
   },
   {
     id: 'msi-player', name: 'MSI App Player', category: 'Emuladores', icon: 'controller',

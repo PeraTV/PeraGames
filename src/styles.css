@@ -275,7 +275,7 @@ body:not(.theater-on) main:has(#home:not([hidden])) { scrollbar-width: none; }
 [data-store="steam"] { --identity:url("assets/theme-steam.jpg"); }
 [data-store="epic"], [data-store="xbox"] { --identity:url("assets/theme-epic.jpg"); }
 [data-store="gog"], [data-store="ubisoft"], [data-store="openrgb"], [data-store="protonup"] { --identity:url("assets/theme-gog.jpg"); }
-[data-store="amazon"], [data-store="playnite"], [data-store="lutris"] { --identity:url("assets/theme-amazon.jpg"); }
+[data-store="amazon"] { --identity:url("assets/theme-amazon.jpg"); }
 [data-store="dolphin"], [data-store="battle"] { --identity:url("assets/theme-wii.jpg"); }
 [data-store="pcsx2"], [data-store="goverlay"] { --identity:url("assets/theme-gamecube.jpg"); }
 [data-store="retroarch"] { --identity:url("assets/theme-arcade.jpg"); }

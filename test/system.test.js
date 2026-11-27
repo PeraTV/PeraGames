@@ -41,6 +41,7 @@ test('usa somente os aplicativos padrão detectados ou o executável vinculado',
   const found = await detectStores(stores, 'win32', {}, { apps: { dolphin: process.execPath } }, [root]);
   assert.equal(found.steam.file, steam);
   assert.equal(found.dolphin.file, process.execPath);
-  assert.equal(found.lutris, null);
+  assert.equal(Object.hasOwn(found, 'lutris'), false);
+  assert.equal(Object.hasOwn(found, 'playnite'), false);
   await assert.rejects(launch(path.join(root, 'ausente')), { code: 'ENOENT' });
 });

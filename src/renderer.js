@@ -21,7 +21,7 @@ function localizeMarkup(locale) {
   }
 }
 const byId = id => document.getElementById(id);
-const galleryDefaults = [['steam', 'Steam'], ['lutris', 'Lutris'], ['retroarch', 'RetroArch']];
+const galleryDefaults = [['steam', 'Steam'], ['retroarch', 'RetroArch']];
 const galleryPreferencesKey = 'peragames.galleryLaunchers';
 let galleryLaunchers = galleryDefaults.map(([id]) => id);
 try {
@@ -49,19 +49,18 @@ const romEmulators = [['dolphin', 'Dolphin'], ['pcsx2', 'PCSX2'], ['ppsspp', 'PP
 const brandDomains = {
   steam: 'steampowered.com', epic: 'store.epicgames.com', gog: 'gog.com', amazon: 'amazongames.com',
   xbox: 'xbox.com', battle: 'battle.net', ea: 'ea.com', ubisoft: 'ubisoft.com',
-  lutris: 'lutris.net', protonup: 'davidotek.github.io', wine: 'winehq.org',
-  openrgb: 'openrgb.org', discord: 'discord.com', obs: 'obsproject.com', playnite: 'playnite.link',
+  protonup: 'davidotek.github.io', wine: 'winehq.org',
+  openrgb: 'openrgb.org', discord: 'discord.com', obs: 'obsproject.com',
   retroarch: 'retroarch.com', dolphin: 'dolphin-emu.org', pcsx2: 'pcsx2.net', ppsspp: 'ppsspp.org', afterburner: 'msi.com'
 };
 const brandSlugs = {
   'msi-player': 'msi',
   steam: 'steam', epic: 'epicgames', gog: 'gogdotcom',
-  xbox: 'xbox', battle: 'battledotnet', ea: 'ea', ubisoft: 'ubisoft', lutris: 'lutris', discord: 'discord', obs: 'obsstudio'
+  xbox: 'xbox', battle: 'battledotnet', ea: 'ea', ubisoft: 'ubisoft', discord: 'discord', obs: 'obsstudio'
 };
 const officialMarks = {
   afterburner: 'https://asset.msi.com/global/picture/app/afterburner.png',
   corectrl: 'https://gitlab.com/corectrl/corectrl/-/raw/master/resources/icon/128x128/corectrl.svg',
-  playnite: 'https://playnite.link/applogo.png',
   retroarch: 'https://dl.flathub.org/media/org/libretro/RetroArch/3ee0774bac871b4ff7a8a6927c43b394/icons/128x128/org.libretro.RetroArch.png',
   openrgb: 'https://dl.flathub.org/media/org/openrgb/OpenRGB/24f61561827f19003c930ac7261ea1ee/icons/128x128/org.openrgb.OpenRGB.png',
   goverlay: 'https://dl.flathub.org/media/io/github/benjamimgois.goverlay/ec9a91653d75b0b4ce1e147d065d3ee3/icons/128x128/io.github.benjamimgois.goverlay.png',
