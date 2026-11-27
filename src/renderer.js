@@ -21,7 +21,7 @@ function localizeMarkup(locale) {
   }
 }
 const byId = id => document.getElementById(id);
-const galleryDefaults = [['steam', 'Steam'], ['lutris', 'Lutris'], ['heroic', 'Heroic'], ['retroarch', 'RetroArch']];
+const galleryDefaults = [['steam', 'Steam'], ['lutris', 'Lutris'], ['retroarch', 'RetroArch']];
 const galleryPreferencesKey = 'peragames.galleryLaunchers';
 let galleryLaunchers = galleryDefaults.map(([id]) => id);
 try {
@@ -48,14 +48,14 @@ const romEmulators = [['dolphin', 'Dolphin'], ['pcsx2', 'PCSX2'], ['ppsspp', 'PP
   ['shadps4', 'shadPS4'], ['xemu', 'xemu'], ['xenia', 'Xenia'], ['retroarch', 'RetroArch']];
 const brandDomains = {
   steam: 'steampowered.com', epic: 'store.epicgames.com', gog: 'gog.com', amazon: 'amazongames.com',
-  heroic: 'heroicgameslauncher.com', xbox: 'xbox.com', battle: 'battle.net', ea: 'ea.com', ubisoft: 'ubisoft.com',
+  xbox: 'xbox.com', battle: 'battle.net', ea: 'ea.com', ubisoft: 'ubisoft.com',
   lutris: 'lutris.net', protonup: 'davidotek.github.io', wine: 'winehq.org',
   openrgb: 'openrgb.org', discord: 'discord.com', obs: 'obsproject.com', playnite: 'playnite.link',
   retroarch: 'retroarch.com', dolphin: 'dolphin-emu.org', pcsx2: 'pcsx2.net', ppsspp: 'ppsspp.org', afterburner: 'msi.com'
 };
 const brandSlugs = {
   'msi-player': 'msi',
-  steam: 'steam', epic: 'epicgames', gog: 'gogdotcom', heroic: 'heroicgameslauncher',
+  steam: 'steam', epic: 'epicgames', gog: 'gogdotcom',
   xbox: 'xbox', battle: 'battledotnet', ea: 'ea', ubisoft: 'ubisoft', lutris: 'lutris', discord: 'discord', obs: 'obsstudio'
 };
 const officialMarks = {
@@ -70,6 +70,8 @@ const officialMarks = {
   pcsx2: 'https://raw.githubusercontent.com/PCSX2/pcsx2/81526d4dc7cc/bin/resources/icons/AppIconLarge.png',
   ppsspp: 'https://raw.githubusercontent.com/hrydgard/ppsspp/a2f4ce214f22/source_assets/image/icon_regular.png'
 };
+const consoleMarks = Object.fromEntries(['rpcs3', 'shadps4', 'xemu', 'xenia']
+  .map(id => [id, 'assets/icons/' + id + '.svg']));
 const systems = [
   ['wii', 'Nintendo Wii', 'Dolphin', 'dolphin', 'theme-wii', 'Wii.svg'],
   ['gamecube', 'Nintendo GameCube', 'Dolphin', 'dolphin', 'theme-gamecube', 'Nintendo_GameCube_symbol_logo.svg'],
@@ -359,7 +361,7 @@ function storeIcon(item) {
   image.alt = '';
   const slug = brandSlugs[item.id];
   const domain = brandDomains[item.id];
-  setArt(image, [officialMarks[item.id], slug && ('https://cdn.simpleicons.org/' + slug + '/fff1e7'), item.executableIcon,
+  setArt(image, [consoleMarks[item.id], officialMarks[item.id], slug && ('https://cdn.simpleicons.org/' + slug + '/fff1e7'), item.executableIcon,
     domain && ('https://www.google.com/s2/favicons?sz=128&domain=' + domain)]);
   return image;
 }
@@ -479,6 +481,8 @@ function renderGameDetails() {
   byId('game-proton').hidden = !game.canUseProton;
   byId('game-proton-open').hidden = !game.canUseProton;
   byId('game-setup-edit').hidden = !game.canEditSetup;
+  byId('game-replace-executable').hidden = !game.canReplaceExecutable;
+  byId('game-cover').hidden = Boolean(previewStoreGame);
   byId('game-favorite').hidden = Boolean(previewStoreGame);
   byId('game-customize').hidden = Boolean(previewStoreGame);
   byId('game-play').textContent = t(previewStoreGame ? storeInstallLabel(previewStoreGame) : '▶ Jogar');
@@ -498,13 +502,17 @@ function showProtonSettings(settings) {
   if (value !== fallback && !options.some(option => option.value === value)) {
     options.push(new Option(t('A versão selecionada do Proton não foi encontrada.'), value));
   }
-  select.replaceChildren(new Option(t(settings.steam ? 'Padrão da Steam' : 'GE-Proton mais recente (automático)'), fallback), ...options);
+  select.replaceChildren(new Option(t(settings.steam ? 'Padrão da Steam' : 'GE-Proton automático'), fallback), ...options);
   select.value = value;
   select.dataset.saved = value;
+  const folder = byId('proton-folder');
+  const showFolder = !settings.steam && value.startsWith('/');
+  folder.hidden = !showFolder;
+  folder.textContent = showFolder ? t('Pasta do Proton: {folder}', { folder: value }) : '';
   byId('proton-note').textContent = settings.steam
     ? t('Feche a Steam antes de salvar. Para instalar uma versão oficial, use Baixar pela Steam.')
     : settings.umu
-    ? t('O modo automático baixa e atualiza o GE-Proton ao iniciar o jogo.')
+    ? t('Usa o GE-Proton mais recente que encontrar no computador. Se não houver nenhum, o PeraGames baixa uma versão oficial.')
     : t('O PeraGames prepara o umu-launcher na primeira vez que você usar o Proton.');
   byId('proton-help').hidden = settings.steam || settings.umu;
   const downloads = settings.steamDownloads || [];
@@ -516,10 +524,26 @@ function showProtonSettings(settings) {
     ? t('Executável do Windows: {file}', { file: settings.executable })
     : t('Este jogo abre no Linux. Para usar Proton, indique o executável da versão Windows.');
   byId('proton-executable-reset').hidden = !settings.executable;
-  byId('proton-prefix-text').textContent = settings.prefix
-    ? t('Prefixo Wine: {folder}', { folder: settings.prefix }) : t(settings.separateRunners
+  byId('proton-prefix-text').textContent = settings.activePrefix
+    ? t('Prefixo Wine: {folder}', { folder: settings.activePrefix }) : t(settings.separateRunners
       ? 'Wine e Proton usam pastas separadas para os dados deste jogo.' : 'Prefixo separado para este jogo');
-  byId('proton-prefix-reset').hidden = !settings.prefix;
+  byId('proton-prefix-reset').hidden = !settings.activePrefix;
+  byId('proton-launch-options').hidden = Boolean(settings.steam);
+  byId('proton-maintenance').hidden = !settings.canManagePrefix;
+  byId('proton-restore').hidden = !settings.canRestorePrefix;
+  byId('proton-arguments').value = (settings.args || []).join('\n');
+  byId('proton-environment').value = Object.entries(settings.variables || {}).map(([key, value]) => key + '=' + value).join('\n');
+  byId('proton-steam-id').value = settings.steamId || '';
+  byId('proton-umu-id').value = settings.umuId || '';
+  const profile = settings.recommendedProfile;
+  const suggestions = profile?.dependencies.join(' ') || '';
+  const hint = byId('proton-dependency-suggestion');
+  hint.hidden = !suggestions;
+  hint.textContent = profile ? t('Perfil sugerido — Steam {id}, UMU umu-{id}. Componentes: {components}', { id: profile.steamId, components: suggestions }) : '';
+  byId('proton-use-profile').hidden = !profile;
+  byId('proton-diagnose').hidden = !settings.canManagePrefix;
+  byId('proton-guide').hidden = Boolean(settings.steam);
+  byId('proton-components').value = suggestions;
 }
 
 let pendingProton;
@@ -539,7 +563,7 @@ async function changeProton(action) {
   const id = selectedGame;
   const panel = byId('game-proton');
   const status = byId('proton-status');
-  const controls = [...panel.querySelectorAll('button, select')];
+  const controls = [...panel.querySelectorAll('button, select, input, textarea')];
   controls.forEach(control => { control.disabled = true; });
   status.textContent = t('Consultando…');
   pendingProton = true;
@@ -565,11 +589,13 @@ let protonCatalogPage = 0;
 let protonCatalogRows = [];
 let protonCatalogMore = false;
 let protonCatalogBusy = false;
+let protonCatalogFailed = false;
 let downloadingProton;
 const protonCatalogStatus = () => byId('proton-catalog-status');
 
 function renderProtonCatalog() {
   byId('proton-catalog-source').disabled = protonCatalogBusy;
+  byId('proton-catalog-retry').hidden = !protonCatalogFailed;
   const more = byId('proton-catalog-more');
   more.hidden = !protonCatalogMore;
   more.disabled = protonCatalogBusy;
@@ -578,7 +604,7 @@ function renderProtonCatalog() {
     const size = Math.round(item.size / (1024 * 1024));
     const action = button(t(item.installed ? 'Instalado' : 'Instalar'), () => installCatalogProton(item), 'button');
     action.disabled = item.installed || protonCatalogBusy;
-    row.append(el('span', '', item.name + ' · ' + size + ' MiB'), action);
+    row.append(el('span', '', item.size ? item.name + ' · ' + size + ' MiB' : item.name), action);
     return row;
   }));
 }
@@ -591,16 +617,19 @@ async function loadProtonCatalog(reset = false) {
     protonCatalogMore = false;
   }
   const source = byId('proton-catalog-source').value;
+  protonCatalogFailed = false;
   protonCatalogBusy = true;
   renderProtonCatalog();
   protonCatalogStatus().textContent = t('Consultando…');
   try {
-    const { entries, next } = await api.protonCatalog({ source, page: protonCatalogPage + 1 });
+    const { entries, next, websiteOnly } = await api.protonCatalog({ source, page: protonCatalogPage + 1 });
     protonCatalogPage += 1;
     protonCatalogRows.push(...entries.filter(entry => !protonCatalogRows.some(row => row.id === entry.id)));
     protonCatalogMore = next;
-    protonCatalogStatus().textContent = protonCatalogRows.length ? '' : t('Nenhuma versão encontrada para este sistema.');
+    protonCatalogStatus().textContent = websiteOnly ? t('O catálogo está indisponível. A versão abaixo veio da página oficial.') :
+      protonCatalogRows.length ? '' : t('Nenhuma versão encontrada para este sistema.');
   } catch (error) {
+    protonCatalogFailed = true;
     protonCatalogStatus().textContent = t(error.message);
   } finally {
     protonCatalogBusy = false;
@@ -694,7 +723,7 @@ function renderGameSetup() {
 function setSetupRunners(versions, selection) {
   const select = byId('game-setup-runner');
   const value = selection || select.value || 'GE-Proton';
-  select.replaceChildren(new Option(t('GE-Proton mais recente (automático)'), 'GE-Proton'),
+  select.replaceChildren(new Option(t('GE-Proton automático'), 'GE-Proton'),
     ...versions.map(({ path, name }) => new Option(t(name), path)));
   select.value = value;
 }
@@ -712,7 +741,8 @@ async function setupAction(action, message = 'Consultando…') {
       gameSetup = { ...gameSetup, ...next };
       if (next.versions) setSetupRunners(next.versions, next.selectedRunner);
     }
-    status.textContent = next?.installed ? t('Instalador encerrado. Escolha o executável instalado para salvar.') : '';
+    status.textContent = next?.installed ? t(next.launcher && next.file ? 'Executável encontrado. Salve para abrir em Lojas.' :
+      'Instalador encerrado. Escolha o executável instalado para salvar.') : '';
   } catch (error) { status.textContent = t(error.message); }
   finally {
     setupBusy = false;
@@ -732,6 +762,7 @@ function openGameSetup(id, storeId) {
   byId('game-setup-title').textContent = t(storeId === 'epic' ? 'Configurar launcher oficial da Epic' :
     storeId ? 'Configurar launcher de Windows' : id ? 'Editar inicialização' : 'Adicionar jogo ou aplicativo');
   byId('game-setup-epic-note').hidden = storeId !== 'epic';
+  byId('game-setup-launcher-note').hidden = !['ea', 'battle', 'ubisoft'].includes(storeId);
   byId('game-setup-runner').replaceChildren();
   renderGameSetup();
   byId('game-setup-dialog').showModal();
@@ -1095,7 +1126,10 @@ function render() {
   if (page === 'home') {
     byId('hero').hidden = Boolean(query.trim());
     renderHero();
-    fillGames('quick-games', games.slice(0, query.trim() ? games.length : 5), Boolean(query.trim()));
+    const searching = Boolean(query.trim());
+    const favorites = games.filter(game => game.favorite);
+    const recent = games.filter(game => !game.favorite).slice(0, Math.max(0, 5 - favorites.length));
+    fillGames('quick-games', searching ? games : [...favorites, ...recent], searching);
   } else {
     renderPcLibrary(games, query, onlyFavorites);
   }
@@ -1209,7 +1243,11 @@ function allTvGames() {
 
 const tvStoreGames = () => state.tv?.showUninstalled === false ? [] : availableStoreGames();
 const tvGameKey = game => game?.provider ? `${game.provider}-${game.id}` : game?.id;
-const currentTvPage = games => theaterCategory === 'pc' ? games : games.slice(tvLibraryPage * tvPageSize, (tvLibraryPage + 1) * tvPageSize);
+const tvItemsPerPage = () => theaterCategory === 'pc' ? 84 : tvPageSize;
+const currentTvPage = games => {
+  const size = tvItemsPerPage();
+  return games.slice(tvLibraryPage * size, (tvLibraryPage + 1) * size);
+};
 
 function tvLayout() {
   return ['cockpit', 'gallery'].includes(state.tv?.layout) ? state.tv.layout : 'cinema';
@@ -1238,7 +1276,8 @@ function renderTvSystems() {
     tile.dataset.system = id;
     tile.setAttribute('aria-pressed', String(theaterCategory === 'rom' && theaterSystem === id));
     const image = el('img');
-    image.src = 'assets/tv/' + (artwork[id] || 'pc') + '.jpg';
+    image.src = consoleMarks[id] || 'assets/tv/' + (artwork[id] || 'pc') + '.jpg';
+    if (consoleMarks[id]) image.classList.add('tv-console-mark');
     image.alt = '';
     tile.setAttribute('aria-label', t(name));
     tile.append(image, el('span', '', t(name)));
@@ -1367,7 +1406,7 @@ function renderTheater() {
   const title = t(titles[theaterCategory]);
   byId('tv-shelf-title').textContent = grid ? `${title} · ${t('{count} jogos', { count: library.length })}` : title;
   renderTvSystems();
-  const pages = grid ? 1 : Math.max(1, Math.ceil(library.length / tvPageSize));
+  const pages = Math.max(1, Math.ceil(library.length / tvItemsPerPage()));
   tvLibraryPage = Math.min(tvLibraryPage, pages - 1);
   byId('tv-library-pages').hidden = pages === 1;
   byId('tv-page-prev').disabled = tvLibraryPage === 0;
@@ -1395,8 +1434,8 @@ function renderTheater() {
     tile.setAttribute('aria-label', game.provider ? `${game.name} · ${gameSource(game)} · ${t('Não instalado')}` : game.name);
     const image = el('img', 'tv-card-cover');
     image.alt = '';
-    if (grid) image.loading = 'lazy';
     image.loading = 'lazy';
+    image.decoding = 'async';
     const ambient = el('img', 'tv-card-ambient');
     ambient.alt = '';
     ambient.hidden = true;
@@ -1411,7 +1450,7 @@ function renderTheater() {
     }
     tile.append(ambient, image, el('span', '', game.name));
     tile.addEventListener('focus', () => {
-      if (tile.matches(':focus-visible')) selectTheaterGame(game);
+      if (tile.matches(':focus-visible') && tvGameKey(theaterGame) !== tile.dataset.game) selectTheaterGame(game);
     });
     return tile;
   });
@@ -1519,9 +1558,6 @@ function focusDirection(key) {
   const target = destination?.sort((a, b) => Math.abs(center(a)[0] - x) - Math.abs(center(b)[0] - x))[0] || candidates[0]?.node;
   if (target) {
     target.focus({ preventScroll: true });
-    if (theater && target.dataset.game && target.dataset.game !== tvGameKey(theaterGame)) {
-      selectTheaterGame(currentTvPage(allTvGames()).find(game => tvGameKey(game) === target.dataset.game));
-    }
     target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
 }
@@ -1673,7 +1709,8 @@ const storeNames = { epic: 'Epic Games', gog: 'GOG', amazon: 'Amazon Games' };
 function renderDownloadJobs() {
   const panel = byId('download-jobs');
   const focused = document.activeElement?.dataset.downloadAction;
-  const labels = { queued: 'Na fila', running: 'Instalando…', done: 'Concluído', failed: 'Falhou', external: 'Baixando pela Steam',
+  const labels = { queued: 'Na fila', running: 'Instalando…', cancelling: 'Cancelando…', cancelled: 'Download cancelado',
+    finishing: 'Confirmando instalação…', done: 'Concluído', failed: 'Falhou', external: 'Baixando pela Steam',
     'steam-requested': 'Aguardando confirmação na Steam', 'steam-finalizing': 'Instalando pela Steam' };
   panel.replaceChildren(...[...downloadJobs, ...steamJobs].map(job => {
     const row = el('article', 'settings-card download-row');
@@ -1681,7 +1718,7 @@ function renderDownloadJobs() {
     if (store) row.append(storeIcon(store));
     const content = el('div', 'download-info');
     content.append(el('strong', '', job.name), el('p', '', (storeNames[job.source] || job.source) + ' · ' + t(labels[job.status])));
-    const active = ['running', 'external', 'steam-finalizing'].includes(job.status);
+    const active = ['running', 'cancelling', 'finishing', 'external', 'steam-finalizing'].includes(job.status);
     if (active || job.status === 'done') {
       const bar = el('progress');
       bar.max = 100;
@@ -1694,10 +1731,18 @@ function renderDownloadJobs() {
     }
     if (job.error) content.append(el('p', '', t(job.error)));
     row.append(content);
-    if (!active) {
+    const actionsByStatus = [];
+    if (job.source === 'Steam' && (active || job.status === 'steam-requested')) {
+      actionsByStatus.push(['steam', 'Cancelar na Steam', api.steamDownloads]);
+    } else if (['queued', 'running'].includes(job.status)) {
+      actionsByStatus.push(['cancel', 'Cancelar download', api.cancelDownload]);
+    } else if (!active) {
+      if (['failed', 'cancelled'].includes(job.status)) actionsByStatus.push(['retry', 'Tentar novamente', api.retryDownload]);
+      actionsByStatus.push(['remove', 'Dispensar', api.removeDownload]);
+    }
+    if (actionsByStatus.length) {
       const actions = el('div', 'actions');
-      const actionsByStatus = job.status === 'failed' ? [['retry', 'Tentar novamente', api.retryDownload]] : [];
-      for (const [act, label, method] of [...actionsByStatus, ['remove', job.status === 'queued' ? 'Remover da fila' : 'Dispensar', api.removeDownload]]) {
+      for (const [act, label, method] of actionsByStatus) {
         const control = button(t(label), node => perform(node, async () => {
           const result = await method(job.id);
           if (job.source === 'Steam' && Array.isArray(result)) {
@@ -1714,7 +1759,8 @@ function renderDownloadJobs() {
   }));
   if (!downloadJobs.length && !steamJobs.length) panel.append(el('p', 'settings-empty', t('Nenhum download nesta sessão.')));
   if (focused) Array.from(panel.querySelectorAll('[data-download-action]'))
-    .find(node => node.dataset.downloadAction === focused)?.focus({ preventScroll: true });
+    .find(node => node.dataset.downloadAction === focused ||
+      node.dataset.downloadAction === focused.replace(/:cancel$/, ':retry'))?.focus({ preventScroll: true });
 }
 
 function renderAccounts() {
@@ -1839,6 +1885,10 @@ async function openPreferences(tab = 'accounts') {
 }
 
 async function queueStoreGame(provider, id) {
+  if (theater) {
+    const game = state.ownedStoreGames?.[provider]?.find(entry => entry.id === id);
+    if (!game || !await confirmTvDownload(game.name)) return;
+  }
   if (provider === 'steam') await api.steamInstall(id);
   else if (!(await api.installLinuxStoreGame({ provider, id, useDefaultFolder: theater }))?.queued) return;
   for (const dialog of ['linux-store-dialog', 'game-editor']) {
@@ -1847,7 +1897,17 @@ async function queueStoreGame(provider, id) {
   await openPreferences('downloads');
 }
 
+function confirmTvDownload(name) {
+  const dialog = byId('tv-install-confirm');
+  if (dialog.open) return Promise.resolve(false);
+  dialog.returnValue = '';
+  byId('tv-install-message').textContent = t('Quer baixar {name} agora?', { name });
+  dialog.showModal();
+  return new Promise(resolve => dialog.addEventListener('close', () => resolve(dialog.returnValue === 'download'), { once: true }));
+}
+
 byId('preferences-open').addEventListener('click', () => openPreferences());
+byId('tv-downloads-open').addEventListener('click', () => openPreferences('downloads'));
 byId('preferences-close').addEventListener('click', () => byId('preferences-dialog').close());
 byId('grid-settings-link').addEventListener('click', () => openPreferences('integrations'));
 byId('preferences-dialog').addEventListener('close', () => clearInterval(steamPoll));
@@ -1916,12 +1976,22 @@ api.onStoreLaunchStatus(({ id, name, provider, reason }) => {
     update: '{store} pediu uma atualização para {name}. Na lista da loja, selecione Atualizar jogo.',
     signin: 'O login em {store} falhou ao abrir {name}. Conecte a conta novamente em Lojas.',
     missing: 'Os arquivos de {name} não foram encontrados. Confira a instalação em {store}.',
-    runtime: 'O ambiente do Proton falhou ao iniciar {name}.',
+    runtime: 'Falha ao preparar o Steam Linux Runtime para {name}. Abra Diagnosticar jogo para verificar o ambiente.',
+    dependency: 'Uma dependência falhou ao iniciar {name}. Confira os componentes sugeridos em Compatibilidade com Proton.',
+    'runtime-space': 'Faltou espaço em disco ao preparar o ambiente do Proton para {name}.',
+    'runtime-wine-data': 'O Wine não conseguiu carregar o arquivo l_intl.nls ao iniciar {name}. Confira a extração do Proton ou selecione outra versão.',
+    'missing-cwd': 'A pasta de trabalho de {name} não está disponível no Linux.',
+    'missing-executable': 'O executável de {name} não está disponível no Linux.',
+    'runtime-namespace': 'O Linux bloqueou a criação do ambiente isolado do Proton para {name}.',
+    'runtime-proton-path': 'O UMU não encontrou a instalação do Proton para {name}.',
+    'runtime-loader': 'O UMU iniciou, mas falhou ao carregar o Proton ou o Wine de {name}.',
+    'runtime-manifest': 'O UMU não encontrou um runtime compatível com o Proton selecionado para {name}.',
+    'runtime-network': 'O UMU não conseguiu acessar o servidor necessário para preparar o Proton para {name}.',
     prefix: 'O Wine ou Proton não conseguiu usar a pasta de dados de {name}. Confira o prefixo nas opções do jogo.',
     graphics: 'O ambiente gráfico falhou ao iniciar {name}.',
-    'windows-dll': 'O Windows não encontrou uma DLL necessária para {name}. Confira as dependências indicadas pelo projeto Recomp.',
-    'recomp-exit': 'O executável de {name} encerrou. Confira o arquivo escolhido e os arquivos exigidos pelo projeto Recomp.',
-    runner: 'O Wine ou Proton encerrou {name} com erro.',
+    'windows-dll': 'O Windows não encontrou uma DLL necessária para {name}. Confira as dependências do jogo.',
+    'windows-exit': 'O executável de {name} encerrou com erro. Confira o arquivo escolhido e os arquivos que acompanham o jogo.',
+    runner: 'O processo de {name} encerrou com erro. Abra Diagnosticar jogo para verificar a etapa e o ambiente.',
     'early-exit': '{name} encerrou logo após iniciar. Tente outra versão do Wine ou Proton nas opções do jogo.',
     'store-timeout': '{store} demorou para responder ao abrir {name}. Confira a conexão e tente novamente.',
     store: '{store} não conseguiu abrir {name}.'
@@ -1952,7 +2022,9 @@ for (const [id, kind] of [['executable', 'game'], ['cover', 'cover'], ['prefix',
   });
 }
 byId('game-setup-install').addEventListener('click', () => {
-  setupAction(() => api.runGameInstaller({ runner: byId('game-setup-runner').value }), 'Aguardando o instalador do Windows…');
+  const confirmed = window.confirm(t('Rodar o instalador em uma cópia do prefixo e manter o original para restauração?'));
+  if (!confirmed) return;
+  setupAction(() => api.runGameInstaller({ runner: byId('game-setup-runner').value, confirmed }), 'Aguardando o instalador do Windows…');
 });
 byId('game-setup-form').addEventListener('submit', event => {
   event.preventDefault();
@@ -2162,8 +2234,15 @@ byId('tv-appearance-open').addEventListener('click', () => {
   for (const tile of layoutOptions) tile.setAttribute('aria-pressed', String(tile.dataset.layout === tvLayout()));
   byId('tv-appearance-feedback').hidden = true;
   byId('tv-show-uninstalled').checked = state.tv?.showUninstalled !== false;
+  byId('tv-color-uninstalled').checked = Boolean(state.preferences?.color);
   byId('tv-appearance').showModal();
   layoutOptions.find(tile => tile.dataset.layout === tvLayout())?.focus();
+});
+byId('tv-color-uninstalled').addEventListener('change', async event => {
+  const box = event.currentTarget;
+  if (!await perform(box, () => api.savePreferences({ ...state.preferences, color: box.checked }))) {
+    box.checked = Boolean(state.preferences?.color);
+  }
 });
 byId('tv-show-uninstalled').addEventListener('change', async event => {
   const box = event.currentTarget;
@@ -2269,10 +2348,17 @@ byId('game-setup-proton-manager').addEventListener('click', openProtonCatalog);
 byId('proton-catalog-close').addEventListener('click', () => byId('proton-catalog-dialog').close());
 byId('proton-catalog-source').addEventListener('change', () => loadProtonCatalog(true));
 byId('proton-catalog-more').addEventListener('click', () => loadProtonCatalog());
+byId('proton-catalog-retry').addEventListener('click', () => loadProtonCatalog());
+byId('proton-catalog-official').addEventListener('click', () =>
+  api.protonOfficialReleases(byId('proton-catalog-source').value).catch(error => {
+    protonCatalogStatus().textContent = t(error.message);
+  }));
 api.onProtonProgress?.(({ id, stage, received, total }) => {
   if (downloadingProton !== id) return;
-  protonCatalogStatus().textContent = stage === 'extract' ? t('Extraindo Proton…') :
-    t('Baixando Proton… {percent}%', { percent: Math.floor(received * 100 / total) });
+  let message = t('Extraindo Proton…');
+  if (stage === 'download') message = total ? t('Baixando Proton… {percent}%', { percent: Math.floor(received * 100 / total) }) :
+    t('Baixando Proton… {size} MiB', { size: Math.floor(received / (1024 * 1024)) });
+  protonCatalogStatus().textContent = message;
 });
 byId('proton-download').addEventListener('click', () => {
   const toolId = byId('proton-download-version').value;
@@ -2287,6 +2373,60 @@ byId('proton-latest').addEventListener('click', async event => {
 byId('proton-help').addEventListener('click', () => changeProton(api.protonHelp));
 byId('proton-prefix').addEventListener('click', () => changeProton(id => api.protonPrefix({ id })));
 byId('proton-prefix-reset').addEventListener('click', () => changeProton(id => api.protonPrefix({ id, reset: true })));
+byId('proton-save-options').addEventListener('click', () => changeProton(id => api.protonLaunchOptions({
+  id, argumentsText: byId('proton-arguments').value, environmentText: byId('proton-environment').value,
+  steamId: byId('proton-steam-id').value, umuId: byId('proton-umu-id').value
+})));
+byId('proton-use-profile').addEventListener('click', () => changeProton(api.protonUseProfile));
+byId('proton-install-components').addEventListener('click', () => {
+  const components = byId('proton-components').value.trim();
+  if (components && window.confirm(t('Instalar {components} em uma cópia? O prefixo com os saves ficará guardado.', { components }))) {
+    changeProton(id => api.protonMaintainPrefix({ id, action: 'install', components, confirmed: true }));
+  }
+});
+byId('proton-recreate').addEventListener('click', () => {
+  if (window.confirm(t('Usar um prefixo novo e guardar o prefixo anterior com os saves?'))) {
+    changeProton(id => api.protonMaintainPrefix({ id, action: 'recreate', confirmed: true }));
+  }
+});
+byId('proton-restore').addEventListener('click', () => {
+  if (window.confirm(t('Voltar ao prefixo anterior? Os saves do prefixo atual ficarão na pasta guardada.'))) {
+    changeProton(id => api.protonMaintainPrefix({ id, action: 'restore', confirmed: true }));
+  }
+});
+let diagnosticGame;
+let diagnosticRequest = 0;
+byId('proton-diagnose').addEventListener('click', async () => {
+  const request = ++diagnosticRequest;
+  const game = selectedGame;
+  const dialog = byId('proton-diagnostic-dialog');
+  const report = byId('proton-diagnostic-report');
+  const copy = byId('proton-diagnostic-copy');
+  diagnosticGame = undefined;
+  report.textContent = t('Consultando.');
+  copy.disabled = true;
+  byId('proton-diagnostic-status').textContent = '';
+  dialog.showModal();
+  try {
+    const result = await api.diagnoseGame(game);
+    if (request !== diagnosticRequest || !dialog.open) return;
+    diagnosticGame = game;
+    report.textContent = result.report;
+    copy.disabled = false;
+  } catch {
+    if (request === diagnosticRequest && dialog.open) report.textContent = t('Não foi possível verificar o ambiente do jogo.');
+  }
+});
+byId('proton-diagnostic-close').addEventListener('click', () => byId('proton-diagnostic-dialog').close());
+byId('proton-diagnostic-copy').addEventListener('click', async () => {
+  if (!diagnosticGame) return;
+  try {
+    await api.copyGameDiagnostics(diagnosticGame);
+    byId('proton-diagnostic-status').textContent = t('Relatório copiado.');
+  } catch {
+    byId('proton-diagnostic-status').textContent = t('Não foi possível copiar o relatório.');
+  }
+});
 byId('proton-executable').addEventListener('click', () => changeProton(id => api.protonExecutable({ id })));
 byId('proton-executable-reset').addEventListener('click', () => changeProton(id => api.protonExecutable({ id, reset: true })));
 byId('game-lookup').addEventListener('click', async event => {
@@ -2313,6 +2453,8 @@ byId('game-lookup').addEventListener('click', async event => {
   node.textContent = label;
 });
 byId('game-cover').addEventListener('click', event => perform(event.currentTarget, () => api.pickCover(selectedGame)));
+byId('game-replace-executable').addEventListener('click', event =>
+  perform(event.currentTarget, () => api.replaceExecutable(selectedGame)));
 byId('game-reset-cover').addEventListener('click', event => perform(event.currentTarget, () => api.resetCover(selectedGame)));
 byId('game-choose-backdrop').addEventListener('click', event => perform(event.currentTarget, () => api.pickBackdrop(selectedGame)));
 byId('game-reset-backdrop').addEventListener('click', event => perform(event.currentTarget, () => api.resetBackdrop(selectedGame)));

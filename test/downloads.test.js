@@ -45,6 +45,47 @@ test('lê stdout e stderr com finais de linha distintos', async () => {
   assert.deepEqual(lines.sort(), ['first', 'second', 'third']);
 });
 
+test('cancela downloads na fila e em execução e só avança após a interrupção', async () => {
+  let finish;
+  const updates = [];
+  const queue = createDownloads(jobs => updates.push(jobs));
+  queue.add('epic', 'A', 'epic', (_progress, signal) => new Promise(resolve => {
+    signal.addEventListener('abort', () => { finish = resolve; }, { once: true });
+  }));
+  queue.add('gog', 'B', 'gog', () => assert.fail('executou download cancelado na fila'));
+  queue.add('amazon', 'C', 'amazon', async () => {});
+  queue.cancel('gog');
+  queue.cancel('epic');
+  assert.deepEqual(queue.list().map(job => job.status), ['cancelling', 'cancelled', 'queued']);
+  finish();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(queue.list().map(job => job.status), ['cancelled', 'cancelled', 'done']);
+  assert.ok(updates.some(jobs => jobs[0].status === 'cancelling'));
+});
+
+test('preserva a verificação da loja após concluir o download', async () => {
+  let confirm;
+  const queue = createDownloads(() => {});
+  queue.add('epic', 'A', 'epic', (_progress, _signal, finish) => new Promise(resolve => {
+    finish();
+    confirm = resolve;
+  }));
+  queue.cancel('epic');
+  assert.equal(queue.list()[0].status, 'finishing');
+  confirm();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(queue.list()[0].status, 'done');
+});
+
+test('interrompe o processo real de download quando recebe cancelamento', async () => {
+  const controller = new AbortController();
+  const job = launch(process.execPath, ['-e', 'console.log("ready"); setInterval(() => {}, 1000);'], {
+    wait: true, signal: controller.signal,
+    onLine(line) { if (line === 'ready') controller.abort(); }
+  });
+  await assert.rejects(job, { name: 'AbortError' });
+});
+
 test('mostra andamento da Steam a partir dos bytes reais do manifesto', async context => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'peragames-steam-progress-'));
   context.after(() => fs.rm(root, { recursive: true, force: true }));

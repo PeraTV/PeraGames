@@ -48,7 +48,8 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y flatpak flatpak-builder
+          sudo apt-get install -y flatpak flatpak-builder appstream
+          appstreamcli validate --no-net packaging/flatpak/io.github.PeraTV.PeraGames.metainfo.xml
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
           unpacked=$(find dist/release -maxdepth 1 -type d -name 'linux*unpacked' -print -quit)
           cp -a "$unpacked" packaging/flatpak/electron-app

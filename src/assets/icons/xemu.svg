@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 124" role="img" aria-label="Xbox">
+  <rect x="5" y="5" width="134" height="114" rx="24" fill="#17390f" stroke="#96d653" stroke-width="3"/>
+  <g color="#96d653" fill="#96d653"><path d="M41 38q13 0 30 13 17-13 31-13L82 57l20 22Q82 73 71 62 58 74 41 79l20-22z"/></g>
+  <text x="72" y="103" fill="#fff" font-family="sans-serif" font-size="19" font-weight="700" text-anchor="middle">Xbox</text>
+</svg>

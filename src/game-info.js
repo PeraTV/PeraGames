@@ -12,6 +12,7 @@ function steamImage(url) {
 }
 
 function featuredSteamArt(id) {
+  if (id === '320140') return ['https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/320140/library_600x900.jpg?t=1738073361'];
   if (id !== '2215200') return [];
   return [legoPoster, 'https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/2215200/a07a9a6c0c9c1225f5b260b4f29fe40e6f099f6b/header.jpg'];
 }

@@ -6,6 +6,7 @@ const path = require('node:path');
 const { findLinuxCommand, runHostTool, launch, fileExists } = require('./system');
 const { readProgress } = require('./downloads');
 const { findStoreTool } = require('./store-tools');
+const { portalParts, hostPath, hostExists, requireHostPath, migrateStoreFile } = require('./host-paths');
 
 const providers = {
   epic: {
@@ -55,7 +56,9 @@ async function storeConfig(provider, root, linked) {
   if (!Object.hasOwn(providers, provider)) throw new Error('Loja indisponível neste sistema.');
   const config = providers[provider];
   const commandName = config.tool;
-  const custom = await fileExists(linked) && await fs.access(linked, constants.X_OK).then(() => true, () => false);
+  if (process.platform === 'linux' && linked) linked = await hostPath(linked);
+  const custom = process.platform === 'linux' ? await hostExists(linked, '-x') :
+    await fileExists(linked) && await fs.access(linked, constants.X_OK).then(() => true, () => false);
   const tool = custom ? linked : await findStoreTool(root, provider) ||
     await findLinuxCommand(commandName + (process.platform === 'win32' ? '.exe' : ''), process.env);
   if (!tool) return { ...config, commandName, ready: false };
@@ -68,6 +71,70 @@ async function storeConfig(provider, root, linked) {
     environment: provider === 'gog' ? { GOGDL_CONFIG_PATH: dir } :
       provider === 'amazon' ? { NILE_CONFIG_PATH: dir } : { LEGENDARY_CONFIG_PATH: dir }
   };
+}
+
+function installedMetadata(provider, config, { readOnly = false } = {}) {
+  if (!config.dir || provider === 'gog') return;
+  const file = provider === 'amazon' ? path.join(config.dir, 'nile', 'installed.json') : path.join(config.dir, 'installed.json');
+  const read = readOnly ? fs.readFile(file, 'utf8').then(JSON.parse, () => undefined) : migrateStoreFile(file);
+  return read.then(value => {
+    if (value === undefined) return;
+    if (provider === 'amazon' ? !Array.isArray(value) : !value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new Error('Installed metadata format');
+    }
+    return value;
+  }).catch(() => {
+    throw new Error('Não foi possível ler os caminhos de instalação da loja.');
+  });
+}
+
+async function storeDescriptor(provider, directory, id) {
+  const descriptor = path.join(directory, provider === 'gog' ? 'goggame-' + id + '.info' : 'fuel.json');
+  const manifest = await fs.readFile(descriptor, 'utf8').catch(() =>
+    runHostTool('cat', ['--', descriptor], { timeout: 5000, maxBuffer: 1024 * 1024 }).then(({ stdout }) => stdout, () => ''));
+  let data;
+  try { data = JSON.parse(manifest.replace(/^\uFEFF/, '')); }
+  catch { return; } // Nile also accepts JSON5. Its wrapper validates arguments before UMU.
+  const task = provider === 'gog' ? (Array.isArray(data?.playTasks) && data.playTasks.find(item => item?.isPrimary)) : data?.Main;
+  return { workingDirectory: provider === 'gog' ? task?.workingDir : task?.WorkingSubdirOverride,
+    executable: provider === 'gog' ? task?.path : task?.Command };
+}
+
+async function validateStoreLaunch(provider, folder, id) {
+  const directory = await requireHostPath(folder, '-d', 'A pasta de instalação não existe no Linux.');
+  const { workingDirectory, executable } = await storeDescriptor(provider, directory, id) || {};
+  if (typeof workingDirectory === 'string' && workingDirectory) {
+    await requireHostPath(path.resolve(directory, workingDirectory.replaceAll('\\', '/')),
+      '-d', 'A pasta de trabalho não existe no Linux.');
+  }
+  if (typeof executable === 'string' && executable) {
+    await requireHostPath(path.resolve(directory, executable.replaceAll('\\', '/')),
+      '-f', 'O executável do jogo não existe no Linux.');
+  }
+}
+
+async function diagnoseStorePaths(provider, config, game) {
+  if (!storeGameId(provider, game.storeId)) return {};
+  if (provider === 'gog') {
+    const folder = await hostPath(game.installFolder);
+    if (!folder) return {};
+    const actual = await gogGameFolder(folder, game.storeId);
+    if (!actual) return { directory: folder };
+    const { executable, workingDirectory } = await storeDescriptor(provider, actual, game.storeId) || {};
+    return { directory: actual, executable: descriptorPath(actual, executable),
+      cwd: descriptorPath(actual, workingDirectory) || actual };
+  }
+  const metadata = await installedMetadata(provider, config, { readOnly: true });
+  const entry = provider === 'amazon' ? metadata?.find(item => item.id === game.storeId) : metadata?.[game.storeId];
+  const directory = await hostPath(entry?.path || entry?.install_path || game.installFolder);
+  if (!directory) return {};
+  const task = provider === 'amazon' ? await storeDescriptor(provider, directory, game.storeId) : entry;
+  return { directory, executable: descriptorPath(directory, task?.executable),
+    cwd: descriptorPath(directory, task?.workingDirectory || task?.working_directory) || directory };
+}
+
+function descriptorPath(directory, value) {
+  return typeof value === 'string' && value ? path.resolve(directory, value.replaceAll('\\', '/')) : undefined;
 }
 
 async function command(config, args, json = true) {
@@ -130,21 +197,19 @@ async function library(provider, config, cached) {
   if (provider === 'amazon') {
     await command(config, ['library', 'sync'], false);
     const owned = await command(config, ['library', 'list', '--json']);
-    const installedFile = path.join(config.dir, 'nile', 'installed.json');
-    const installed = await fs.readFile(installedFile, 'utf8').then(JSON.parse, error => {
-      if (error.code !== 'ENOENT') throw error;
-      return [];
-    });
+    const installed = await installedMetadata(provider, config) || [];
     const folders = new Map(installed.map(item => [item.id, item.path]));
     return Promise.all(owned.filter(item => storeGameId(provider, item.product?.id) && typeof item.product.title === 'string')
       .map(async ({ product }) => {
         const folder = folders.get(product.id);
         const detail = product.productDetail;
         return { id: product.id, name: product.title, installed: Boolean(typeof folder === 'string' &&
-          await fileExists(path.join(folder, 'fuel.json'))),
+          (await fileExists(path.join(folder, 'fuel.json')) || await hostExists(path.join(folder, 'fuel.json'), '-f') ||
+            portalParts(folder))),
           cover: storeCover(detail?.details?.backgroundUrl2 || detail?.iconUrl) };
       }));
   }
+  await installedMetadata(provider, config);
   const owned = await command(config, ['list', '--json']);
   const installed = await command(config, ['list-installed', '--json']);
   const installedIds = new Set(installed.map(game => game.app_name));
@@ -184,10 +249,11 @@ async function loginUrl(provider, config) {
 }
 
 async function gogGameFolder(root, id) {
+  root = await hostPath(root);
+  const manifest = 'goggame-' + id + '.info';
   const entries = await fs.readdir(root, { withFileTypes: true }).catch(() => []);
   const folders = [root, ...entries.filter(entry => entry.isDirectory()).map(entry => path.join(root, entry.name))];
   for (const folder of folders) {
-    const manifest = 'goggame-' + id + '.info';
     if (await fileExists(path.join(folder, manifest))) return folder;
     if (process.platform !== 'darwin') continue;
     const bundles = (await fs.readdir(folder).catch(() => [])).filter(name => name.endsWith('.app'));
@@ -195,9 +261,20 @@ async function gogGameFolder(root, id) {
       if (await fileExists(path.join(folder, bundle, 'Contents', 'Resources', manifest))) return folder;
     }
   }
+  if (process.platform === 'linux') {
+    const result = await runHostTool('find', [root, '-maxdepth', '2', '-type', 'f', '-name', manifest, '-print0', '-quit'],
+      { timeout: 5000 }).then(({ stdout }) => stdout.split('\0')[0], () => '');
+    if (result) return path.dirname(result);
+  }
 }
 
-async function install(provider, config, id, folder, progress) {
+async function install(provider, config, id, folder, progress, signal, finish) {
+  signal?.throwIfAborted();
+  if (folder && process.platform === 'linux') {
+    folder = await hostPath(folder);
+    await requireHostPath(path.dirname(folder), '-d', 'A pasta de instalação não existe no Linux.');
+  }
+  await installedMetadata(provider, config);
   const mac = process.platform === 'darwin';
   const args = provider === 'gog'
     ? ['download', id, '--platform', mac ? 'osx' : 'windows', '--path', folder, '--with-dlcs']
@@ -205,23 +282,43 @@ async function install(provider, config, id, folder, progress) {
       : ['-y', 'install', id, ...(folder ? ['--base-path', folder] : []), ...(mac ? ['--platform', 'Mac'] : []), '--skip-dlcs'];
   try {
     await launch(config.tool, [...config.baseArgs, ...args], {
-      environment: config.environment, wait: true, onLine: line => progress(readProgress(line))
+      environment: config.environment, wait: true, signal, onLine: line => progress(readProgress(line))
     });
+    finish();
     if (provider === 'gog') {
       const installed = await gogGameFolder(folder, id);
       if (!installed) throw new Error('Missing game directory');
       return installed;
     }
-  } catch { throw new Error('Não foi possível instalar ou atualizar o jogo pela loja.'); }
+  } catch {
+    signal?.throwIfAborted();
+    throw new Error('Não foi possível instalar ou atualizar o jogo pela loja.');
+  }
 }
 
 const quoteWrapper = argument => "'" + argument.replaceAll("'", "'\"'\"'") + "'";
-const runnerScript = 'printf "\\nPERAGAMES_RUNNER_START\\n" >&2; "$@"; result=$?; printf "\\nPERAGAMES_RUNNER_EXIT=%s\\n" "$result" >&2; exit "$result"';
+const runnerScript = [
+  'cwd=$(pwd -P) && [ -d "$cwd" ] || { printf "PERAGAMES_CWD_MISSING\\n" >&2; exit 125; }',
+  'case "$cwd" in /run/user/*/doc/*|/run/flatpak/doc/*) printf "PERAGAMES_CWD_MISSING\\n" >&2; exit 125;; esac',
+  'case "$2" in /run/user/*/doc/*|/run/flatpak/doc/*) printf "PERAGAMES_EXE_MISSING\\n" >&2; exit 125;; esac',
+  '[ -f "$2" ] || { printf "PERAGAMES_EXE_MISSING\\n" >&2; exit 125; }',
+  'printf "\\nPERAGAMES_RUNNER_START\\n" >&2'
+].join('; ');
 
 function launchReason(line) {
+  if (/d3d->CreateDevice failed|fx_2_0.*not supported|(?:failed to load|cannot find).*d3d(?:compiler|x9)_43/i.test(line)) return 'dependency';
+  if (/^PERAGAMES_CWD_MISSING$|FileNotFoundError:.*(?:\/run\/user\/\d+\/doc\/|\/run\/flatpak\/doc\/)/i.test(line)) return 'missing-cwd';
+  if (line === 'PERAGAMES_EXE_MISSING') return 'missing-executable';
+  if (/no space left on device/i.test(line)) return 'runtime-space';
+  if (/wineserver:\s*failed to load l_intl\.nls/i.test(line)) return 'runtime-wine-data';
+  if (/bwrap:.*(?:operation not permitted|permission denied|namespace)|unprivileged user namespace/i.test(line)) return 'runtime-namespace';
+  if (/environment variable not set or is empty:\s*PROTONPATH|PROTONPATH.*(?:not valid|not found)/i.test(line) && !/toolmanifest\.vdf/i.test(line)) return 'runtime-proton-path';
+  if (/failed to match .*container runtime|toolmanifest\.vdf/i.test(line)) return 'runtime-manifest';
+  if (/certificate verify failed|name or service not known|temporary failure in name resolution|network is unreachable|internet connection is required to setup umu|repo\.steampowered\.com.*(?:error|timed? out|retries exceeded)/i.test(line)) return 'runtime-network';
+  if (/umu-shim.*(?:not found|permission denied)|wine_.*(?:symbol lookup error|undefined symbol)|(?:wine_r_debug|wine_main_preload_info) not found/i.test(line)) return 'runtime-loader';
   if (/wine:.*(?:prefix|wineserver)|(?:system|user)\.reg.*(?:failed|error|denied)|prefix.*(?:not owned|permission denied|different architecture)/i.test(line)) return 'prefix';
   if (/no vulkan|failed to (?:initialize|create).*vulkan|VK_ERROR_|no suitable (?:graphics|devices?)|failed to initialize graphics/i.test(line)) return 'graphics';
-  if (/toolmanifest\.vdf|steamrt[234].*(?:not found|unsupported)|Traceback \(most recent call last\)|^(?:[A-Za-z]+Error|Exception):/i.test(line)) return 'runtime';
+  if (/steamrt[234].*(?:not found|unsupported)|Traceback \(most recent call last\)|^(?:[A-Za-z]+Error|Exception):/i.test(line)) return 'runtime';
   if (/game is out of date|update required/i.test(line)) return 'update';
   if (/login failed|failed to (?:log in|login)|not logged in|authentication failed/i.test(line)) return 'signin';
   if (/not currently installed|install directory.*deleted|cannot launch.*not installed|installation path doesn't exist|fuel\.json doesn't exist|executable not found/i.test(line)) return 'missing';
@@ -248,7 +345,10 @@ function storeLaunchMonitor(onStatus, { direct = false, wrapped = false } = {}) 
       } else if (/^PERAGAMES_RUNNER_EXIT=\d+$/.test(line)) {
         if (reason || !line.endsWith('=0')) report('runner');
         else if (early()) report('early-exit');
-      } else reason = launchReason(line) || reason;
+      } else {
+        const found = launchReason(line);
+        if (found && (!reason || found !== 'runtime')) reason = found;
+      }
     },
     onClose(code, signal) {
       if (reason || code || signal) report(direct || started ? 'runner' : 'store');
@@ -258,7 +358,7 @@ function storeLaunchMonitor(onStatus, { direct = false, wrapped = false } = {}) 
   };
 }
 
-async function playEpicOnLinux(config, id, runner, environment, onStatus) {
+async function playEpicOnLinux(config, id, runner, environment, onStatus, additionalArgs, onClose) {
   let parameters;
   try {
     const { stdout } = await runHostTool(config.tool, [...config.baseArgs, 'launch', id, '--no-wine', '--json'], {
@@ -270,27 +370,27 @@ async function playEpicOnLinux(config, id, runner, environment, onStatus) {
     onStatus(reason || (error.killed ? 'store-timeout' : 'store'));
     return false;
   }
-  const { game_directory: directory, working_directory: cwd, game_executable: executable,
+  const { game_directory: directory, working_directory: workingDirectory, game_executable: executable,
     game_parameters: gameArgs, user_parameters: userArgs, egl_parameters: epicArgs } = parameters || {};
   if (parameters?.pre_launch_command) return null;
-  if (typeof directory !== 'string' || !path.isAbsolute(directory) || typeof cwd !== 'string' || !path.isAbsolute(cwd) ||
+  if (typeof directory !== 'string' || !path.isAbsolute(directory) || typeof workingDirectory !== 'string' || !path.isAbsolute(workingDirectory) ||
       typeof executable !== 'string' || !executable) {
     onStatus('missing');
     return false;
   }
-  const file = path.resolve(directory, executable);
-  if (!await fileExists(file) && !await runHostTool('test', ['-f', file], { timeout: 5000 }).then(() => true, () => false)) {
-    onStatus('missing');
-    return false;
-  }
-  const args = [gameArgs, userArgs, epicArgs].flat().filter(value => typeof value === 'string');
+  const cwd = await requireHostPath(workingDirectory, '-d', 'A pasta de trabalho não existe no Linux.');
+  const file = await requireHostPath(path.resolve(await hostPath(directory), executable), '-f', 'O executável do jogo não existe no Linux.');
+  const args = [gameArgs, userArgs, epicArgs, additionalArgs].flat().filter(value => typeof value === 'string');
   const overrides = Object.fromEntries(Object.entries(parameters.environment || {}).filter(([key, value]) =>
     /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) && typeof value === 'string' && !value.includes('\0')));
   onStatus('runner-start');
   try {
-    const wrapper = overrides.LEGENDARY_WRAPPER_EXE?.trim();
+    const requestedWrapper = overrides.LEGENDARY_WRAPPER_EXE?.trim();
+    const wrapper = requestedWrapper && path.isAbsolute(requestedWrapper) ? await hostPath(requestedWrapper) : requestedWrapper;
+    const launchMonitor = storeLaunchMonitor(onStatus, { direct: true });
     await launch(runner, [...(wrapper ? [wrapper] : []), file, ...args], {
-      cwd, hostCwd: cwd, environment: { ...overrides, ...environment }, ...storeLaunchMonitor(onStatus, { direct: true })
+      cwd, hostCwd: cwd, environment: { ...overrides, ...environment }, onLine: launchMonitor.onLine,
+      onClose(code, signal) { launchMonitor.onClose(code, signal); onClose?.(); }
     });
   } catch {
     onStatus('runner');
@@ -299,9 +399,21 @@ async function playEpicOnLinux(config, id, runner, environment, onStatus) {
   return true;
 }
 
-async function play(provider, config, { id, folder, umu, environment, onStatus }) {
+async function play(provider, config, { id, folder, umu, environment, onStatus, onClose, additionalArgs = [] }) {
+  const metadata = await installedMetadata(provider, config);
+  if (process.platform === 'linux' && umu && metadata) {
+    const entry = provider === 'amazon' ? metadata.find(item => item.id === id) : metadata[id];
+    const location = entry?.path || entry?.install_path;
+    if (location) {
+      if (provider === 'amazon') await validateStoreLaunch(provider, location, id);
+      else await requireHostPath(location, '-d', 'A pasta de instalação não existe no Linux.');
+    }
+  }
+  if (environment?.PROTONPATH) {
+    environment = { GAMEID: 'umu-0', STORE: provider === 'epic' ? 'egs' : provider, ...environment };
+  }
   if (provider === 'epic' && process.platform === 'linux' && umu && onStatus) {
-    const result = await playEpicOnLinux(config, id, umu, environment, onStatus);
+    const result = await playEpicOnLinux(config, id, umu, environment, onStatus, additionalArgs, onClose);
     if (result !== null) return result;
   }
   let args = ['launch', id];
@@ -311,16 +423,21 @@ async function play(provider, config, { id, folder, umu, environment, onStatus }
       onStatus?.('missing');
       return false;
     }
+    if (process.platform === 'linux') await validateStoreLaunch(provider, gameDir, id);
     args = ['launch', gameDir, id, '--platform', process.platform === 'darwin' ? 'osx' : 'windows'];
   }
   const monitored = onStatus && Object.hasOwn(providers, provider);
-  const command = monitored && umu ? ['/bin/sh', '-c', runnerScript, 'peragames-runner', umu] : [umu];
+  const script = runnerScript + '; "$@"' + (additionalArgs.length ? ' ' + additionalArgs.map(quoteWrapper).join(' ') : '') +
+    '; result=$?; printf "\\nPERAGAMES_RUNNER_EXIT=%s\\n" "$result" >&2; exit "$result"';
+  const command = umu ? ['/bin/sh', '-c', script, 'peragames-runner', umu] : [];
   const wrapper = umu ? ['--no-wine', '--wrapper', command.map(quoteWrapper).join(' ')] : [];
-  await launch(config.tool, [...config.baseArgs, ...args, ...wrapper], {
+  const launchMonitor = monitored && storeLaunchMonitor(onStatus, { wrapped: Boolean(umu) });
+  try { await launch(config.tool, [...config.baseArgs, ...args, ...wrapper], {
     environment: { ...config.environment, ...environment },
     hostCwd: config.dir,
-    ...(monitored ? storeLaunchMonitor(onStatus, { wrapped: Boolean(umu) }) : {})
-  });
+    onLine: launchMonitor?.onLine,
+    onClose(code, signal) { launchMonitor?.onClose(code, signal); onClose?.(); }
+  }); } catch { throw new Error(storeError); }
   return true;
 }
 
@@ -328,6 +445,7 @@ async function uninstall(game, config, shell) {
   const { store, storeId, installBase, installFolder } = game;
   if (!storeGameId(store, storeId)) throw new Error('Desinstalação indisponível para este jogo.');
   if (store !== 'gog') {
+    await installedMetadata(store, config);
     await command(config, store === 'epic' ? ['-y', 'uninstall', storeId] : ['uninstall', storeId], false);
     return;
   }
@@ -346,4 +464,5 @@ async function uninstall(game, config, shell) {
   } catch { throw new Error('O sistema não conseguiu mover a pasta do jogo para a lixeira.'); }
 }
 
-module.exports = { storeConfig, storeGameId, loginCode, loginUrl, library, connect, install, uninstall, play, gogGameFolder };
+module.exports = { storeConfig, storeGameId, loginCode, loginUrl, library, connect, install, uninstall, play, gogGameFolder,
+  diagnoseStorePaths, launchReason };

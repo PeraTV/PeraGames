@@ -1,10 +1,10 @@
 {
   "app-id": "io.github.PeraTV.PeraGames",
   "runtime": "org.freedesktop.Platform",
-  "runtime-version": "24.08",
+  "runtime-version": "25.08",
   "sdk": "org.freedesktop.Sdk",
   "base": "org.electronjs.Electron2.BaseApp",
-  "base-version": "24.08",
+  "base-version": "25.08",
   "command": "peragames-flatpak",
   "finish-args": [
     "--share=ipc", "--share=network", "--socket=x11", "--socket=wayland",
@@ -23,12 +23,14 @@
       "cp -a electron-app/. /app/share/peragames/",
       "install -Dm755 peragames-flatpak /app/bin/peragames-flatpak",
       "install -Dm644 io.github.PeraTV.PeraGames.desktop /app/share/applications/io.github.PeraTV.PeraGames.desktop",
-      "install -Dm644 electron-app/resources/app/src/assets/pera-mark-512.png /app/share/icons/hicolor/512x512/apps/io.github.PeraTV.PeraGames.png"
+      "install -Dm644 electron-app/resources/app/src/assets/pera-mark-512.png /app/share/icons/hicolor/512x512/apps/io.github.PeraTV.PeraGames.png",
+      "install -Dm644 io.github.PeraTV.PeraGames.metainfo.xml /app/share/metainfo/io.github.PeraTV.PeraGames.metainfo.xml"
     ],
     "sources": [
       { "type": "dir", "path": "electron-app", "dest": "electron-app" },
       { "type": "file", "path": "peragames-flatpak" },
-      { "type": "file", "path": "io.github.PeraTV.PeraGames.desktop" }
+      { "type": "file", "path": "io.github.PeraTV.PeraGames.desktop" },
+      { "type": "file", "path": "io.github.PeraTV.PeraGames.metainfo.xml" }
     ]
   }]
 }

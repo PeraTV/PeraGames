@@ -144,6 +144,7 @@ body:not(.theater-on) main:has(#home:not([hidden])) { scrollbar-width: none; }
 .game-art { position: absolute; inset: 0; width: 100%; height: 100%; display: grid; place-items: center; border: 0; padding: 0; background: radial-gradient(ellipse at 44% 38%,#783550,#282033 65%,#220b18); }
 .game-art:focus-visible { outline-offset: -4px; }
 .game-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 28%; }
+.game-art img.landscape { object-fit: contain; object-position: center; }
 .game-placeholder { text-align: center; padding: 12px; font-size: clamp(19px, 2vw, 30px); font-weight: 800; text-shadow: 0 2px 8px #2c1520; overflow-wrap: anywhere; }
 .game-info {
   position: absolute; inset: auto 0 0; padding: 30px 10px 10px; color: #fff2ea;
@@ -242,7 +243,6 @@ body:not(.theater-on) main:has(#home:not([hidden])) { scrollbar-width: none; }
 [data-store="epic"] { --tile-dark: #241737; --tile-light: #6b33a9; }
 [data-store="gog"] { --tile-dark: #320d38; --tile-light: #9e3b7f; }
 [data-store="amazon"] { --tile-dark: #2d2012; --tile-light: #765127; --mark: #ffbd50; }
-[data-store="heroic"] { --tile-dark: #172638; --tile-light: #2c5870; --mark: #88dbff; }
 [data-store="retroarch"] { --tile-dark: #2c1827; --tile-light: #714055; }
 [data-store="dolphin"] { --tile-dark: #101f43; --tile-light: #175f91; --mark: #57d4ff; }
 [data-store="pcsx2"], [data-store="ppsspp"] { --tile-dark: #132441; --tile-light: #1b537d; --mark: #8adfff; }
@@ -259,7 +259,7 @@ body:not(.theater-on) main:has(#home:not([hidden])) { scrollbar-width: none; }
 [data-store="goverlay"] > .detail-art { background: url("assets/market-goverlay.jpg") center/cover, #743819; }
 [data-store="steam"] > .detail-art { background: linear-gradient(#11172330,#15183250), url("assets/market-steam.jpg") center/cover, #284365; }
 [data-store="steam"] { --identity:url("assets/theme-steam.jpg"); }
-[data-store="epic"], [data-store="heroic"], [data-store="xbox"] { --identity:url("assets/theme-epic.jpg"); }
+[data-store="epic"], [data-store="xbox"] { --identity:url("assets/theme-epic.jpg"); }
 [data-store="gog"], [data-store="ubisoft"], [data-store="openrgb"], [data-store="protonup"] { --identity:url("assets/theme-gog.jpg"); }
 [data-store="amazon"], [data-store="playnite"], [data-store="lutris"] { --identity:url("assets/theme-amazon.jpg"); }
 [data-store="dolphin"], [data-store="battle"] { --identity:url("assets/theme-wii.jpg"); }
@@ -356,6 +356,8 @@ body[data-palette]:not([data-palette="amber"]) :focus-visible { outline-color: v
 .game-card[data-system] .game-art img { object-fit: contain; object-position: center; }
 #game-poster { object-fit: scale-down; object-position: center; }
 #game-poster[data-fill] { object-fit: cover; }
+#game-poster[data-fill].landscape { object-fit: contain; }
+.game-cover-action { margin-top: 8px; }
 #game-compatibility[data-tier="native"] { border-color: #8bc8a6; color: #b0edc7; }
 #game-compatibility[data-tier="platinum"] { border-color: #b9c9ef; color: #e4edff; }
 #game-compatibility[data-tier="gold"] { border-color: #e0ad57; color: #ffcf80; }
@@ -524,4 +526,10 @@ body[data-reduced-motion] *, body[data-reduced-motion] *::before, body[data-redu
 @media (max-width: 430px) {
   .titlebar .brand strong { display: none; }
   .game-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+#proton-diagnostic-report {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 45vh;
+  overflow: auto;
 }

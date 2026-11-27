@@ -38,9 +38,10 @@ flatpak run io.github.PeraTV.PeraGames
 
 Use the x64 bundle if `uname -m` prints `x86_64`. If it prints `aarch64`, use `PeraGames-Linux-arm64.flatpak` instead. Adjust `~/Downloads` if you saved the file elsewhere. A software manager with Flatpak support can also open the downloaded file. [Distribution-specific setup instructions](https://flathub.org/en/setup).
 
-### Proton, Epic Games, and GOG on Linux
+### Proton, Epic Games, GOG, and Amazon Games on Linux
 
-- Install [umu-launcher](https://github.com/Open-Wine-Components/umu-launcher#installation) on Linux. In **Library → Add game**, select the game's `.exe`. Open **Proton compatibility** in the game's details to select a detected version, add your own Proton folder, or use an existing Wine prefix. **Latest GE-Proton (automatic)** lets UMU get the current release when you play. **Check for GE-Proton releases** shows the latest published version.
+- In **Library → Add game**, select the game's `.exe`. Open **Proton compatibility** in the game's details to select a detected version, add your own Proton folder, or use an existing Wine prefix. **Automatic GE-Proton** uses the newest version found on the computer. If none is installed, PeraGames downloads and verifies the official package before starting [UMU](https://github.com/Open-Wine-Components/umu-launcher). **Check for GE-Proton releases** shows the latest published version.
+- Use **Game launch options** to save arguments, environment variables, or a compatibility ID per game. **Components and prefix recovery** installs Winetricks dependencies into a copy and lets you recreate or return to the previous prefix. For the Epic edition of 20XX, it suggests `d3dcompiler_43` and `d3dx9_43`.
 - Open **Stores → Epic Games/GOG → Store library**, sign in through your browser, and paste the resulting code or callback URL in PeraGames. Epic uses [Legendary](https://github.com/legendary-gl/legendary), and GOG uses [gogdl](https://github.com/Heroic-Games-Launcher/heroic-gogdl). Install the components on the host and make `legendary`, `gogdl`, and `umu-run` available on PATH. Install or update compatible titles from the store library. Installed titles appear in the PeraGames library with per-game Proton settings.
 - For Steam titles, open the game details and select **Proton**. Exit Steam from **Steam → Exit** before choosing a version or importing a Proton folder. The per-game selection takes effect the next time Steam starts.
 - The **Proton** button is visible for every PC game on Linux. For a local game that launches natively, use **Choose a Windows executable** to link the `.exe` and run that build with Proton. Use **Use the original executable** to switch back to the native build.
@@ -48,6 +49,17 @@ Use the x64 bundle if `uname -m` prints `x86_64`. If it prints `aarch64`, use `P
 - Under **Stores**, **Install on Linux** installs Flathub applications through the system Flatpak. For other providers, PeraGames opens the installation page and offers **Copy link**.
 - To change the executable or launch options for an existing local game, open its details and choose **Edit launch settings**.
 - Open **Library → Game accounts** to connect or sync Epic Games and GOG. Titles awaiting installation appear with grayscale covers and an **Install game** button. Use **All games**, **Installed**, or **Not installed** to filter the library.
+
+#### Windows games outside Steam
+
+1. Open the game details and choose **Proton compatibility**. Select **Automatic GE-Proton** or an installed version. The choice is saved per game. **Game launch options** accepts one argument per line, environment variables as `NAME=value`, and a Steam AppID or UMU ID.
+2. If a game needs a Windows library, open **Prefix components and recovery**. Review the suggested components and confirm installation with Winetricks. The optional Epic **20XX** profile suggests `umu-322110`, `d3dcompiler_43`, and `d3dx9_43`. The tested edition stored its video settings in `Documents/20XX/20XXv096.opt` in the Windows profile.
+3. Close the game before installing components, recreating a prefix, or restoring one. Installation works on a copy and recreation starts with an empty prefix. **Restore previous prefix** switches to the backup and keeps the current prefix available. Old saves inside a recreated prefix become available when you restore the previous prefix or copy them manually. Managed prefixes and backups live under `~/.var/app/io.github.PeraTV.PeraGames/config/PeraGames/prefixes/` in Flatpak or `$XDG_CONFIG_HOME/PeraGames/prefixes/` on native Linux installs. A custom prefix may use a different folder. Games may also save outside the prefix or use cloud storage.
+4. If a game fails to start, open **Diagnose game** and select **Copy safe report**. The check covers paths, host access, runtime, Vulkan, 32-bit libraries, and known components. The report includes check results and the last failed stage without personal paths, arguments, or credentials.
+
+Epic uses Legendary, GOG uses gogdl, and Amazon Games uses Nile. PeraGames uses UMU for Windows games launched with Proton. Compatibility depends on the game, graphics drivers, and installed components. Unsupported anti-cheat may prevent startup or online play.
+
+For **EA app**, **Battle.net**, and **Ubisoft Connect** on Linux, open the store details and use **Download Windows installer**. Then open **Configure with Wine or Proton**, choose a runner, and select **Run installer first**. If the launcher opens automatically, close it after installation. PeraGames looks for the executable in the same prefix. Confirm the path and save to open the launcher from **Stores**. Sign-in and game compatibility depend on the launcher, runner, and installed version.
 
 ## Library and customization
 

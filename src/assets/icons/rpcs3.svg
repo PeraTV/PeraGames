@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 124" role="img" aria-label="PS3">
+  <rect x="5" y="5" width="134" height="114" rx="24" fill="#343369" stroke="#7585fb" stroke-width="3"/>
+  <g color="#7585fb" fill="#7585fb"><path d="M34 36h44v17H54v12h-9V45H34zM89 36h22v11H89z"/><circle cx="100" cy="60" r="10"/></g>
+  <text x="72" y="103" fill="#fff" font-family="sans-serif" font-size="19" font-weight="700" text-anchor="middle">PS3</text>
+</svg>

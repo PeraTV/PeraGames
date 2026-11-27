@@ -36,13 +36,6 @@ const stores = [
     windowsPaths: ['Amazon Games/App/Amazon Games.exe']
   },
   {
-    id: 'heroic', name: 'Heroic Games Launcher', category: 'Lojas', icon: 'shield',
-    description: 'Acesse jogos da Epic Games, GOG e Amazon Games.',
-    windowsUrl: 'https://heroicgameslauncher.com/downloads',
-    linuxUrl: 'https://flathub.org/apps/com.heroicgameslauncher.hgl',
-    linuxCommands: ['heroic', 'heroic-games-launcher'], flatpaks: ['com.heroicgameslauncher.hgl']
-  },
-  {
     id: 'xbox', name: 'Xbox para PC', category: 'Lojas',
     description: 'Acesse sua biblioteca Xbox no PC e o Game Pass.',
     website: 'https://www.xbox.com/pt-BR/apps/xbox-app-for-pc', windowsUrl: 'https://www.xbox.com/pt-BR/apps/xbox-app-for-pc'

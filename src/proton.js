@@ -5,6 +5,8 @@ const path = require('node:path');
 const { fileExists, findLinuxCommand, runHostTool } = require('./system');
 const { steamLibraryRoots, systemToolsRoot } = require('./steam-proton');
 const { ensureUmu } = require('./umu');
+const { latestGERelease, installLatestGE } = require('./proton-catalog');
+const { hostPath, hostExists } = require('./host-paths');
 
 const automaticProton = 'GE-Proton';
 const wineSelection = runner => runner === 'wine-system' || Boolean(runner?.startsWith('wine:'));
@@ -19,7 +21,22 @@ async function isProtonDirectory(directory) {
     runHostTool('test', ['-f', launcher], { timeout: 3500 }).then(() => true, () => false);
 }
 
-async function findProtonVersions({ home, steamRoots, custom = [], managed }) {
+async function protonDirectoryFromSelection(directory) {
+  const selected = directory;
+  directory = await hostPath(directory);
+  if (await isProtonDirectory(directory) || await hostExists(path.join(directory || '.', 'proton'), '-f')) return directory;
+  if (typeof directory !== 'string' || !path.isAbsolute(directory)) return;
+  const entries = await fs.readdir(selected, { withFileTypes: true }).catch(() => []);
+  const candidates = await Promise.all(entries.filter(entry => entry.isDirectory() && /proton/i.test(entry.name))
+    .map(async entry => {
+      const folder = path.join(directory, entry.name);
+      return await hostExists(path.join(folder, 'proton'), '-f') && await hasRuntimeManifest(folder) ? folder : undefined;
+    }));
+  const matches = candidates.filter(Boolean);
+  if (matches.length === 1) return matches[0];
+}
+
+async function findProtonVersions({ home, steamRoots = [], custom = [], managed }) {
   const local = path.join(home, '.local', 'share');
   const libraries = (await Promise.all(steamRoots.map(steamLibraryRoots))).flat();
   const roots = [
@@ -42,8 +59,10 @@ async function findProtonVersions({ home, steamRoots, custom = [], managed }) {
   ], { timeout: 3500 }).then(({ stdout }) => stdout.split('\0').filter(Boolean), () => []) : [];
   const seen = new Set();
   const versions = [];
-  for (const candidate of [...custom, ...children.flat(), ...system]) {
-    if (!await isProtonDirectory(candidate)) continue;
+  for (const entry of [...custom, ...children.flat(), ...system]) {
+    const candidate = await hostPath(entry).catch(() => undefined);
+    if (!candidate) continue;
+    if (!await isProtonDirectory(candidate) && !(custom.includes(entry) && await hostExists(path.join(candidate, 'proton'), '-f'))) continue;
     const real = await fs.realpath(candidate).catch(() => candidate);
     if (seen.has(real)) continue;
     seen.add(real);
@@ -53,17 +72,7 @@ async function findProtonVersions({ home, steamRoots, custom = [], managed }) {
 }
 
 async function latestGEProton() {
-  const response = await fetch('https://api.github.com/repos/GloriousEggroll/proton-ge-custom/releases/latest', {
-    headers: { Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(6500)
-  });
-  if (!response.ok) throw new Error('Não foi possível verificar o GE-Proton.');
-  const release = await response.json();
-  if (!/^GE-Proton\d+-\d+(?:[.-]\w+)?$/.test(release.tag_name)) throw new Error('Não foi possível verificar o GE-Proton.');
-  return release.tag_name;
-}
-
-function protonEnvironment(proton, prefix) {
-  return { PROTONPATH: proton || automaticProton, WINEPREFIX: prefix };
+  return (await latestGERelease()).tag_name;
 }
 
 async function storeGamePrefix(previous, selection) {
@@ -90,25 +99,47 @@ async function findWineVersions(home) {
   return versions;
 }
 
-async function windowsRunner(selection, prefix, home, umuRoot) {
-  const runner = selection || automaticProton;
+async function hasRuntimeManifest(directory) {
+  const manifest = path.join(directory, 'toolmanifest.vdf');
+  return hostExists(manifest, '-f');
+}
+
+async function windowsRunner(selection, prefix, { umuRoot, ...locations }) {
+  let runner = selection || automaticProton;
+  prefix = await hostPath(prefix);
   if (wineSelection(runner)) {
-    const file = runner === 'wine-system' ? await findLinuxCommand('wine', process.env) : runner.slice(5);
-    if (!file || (runner !== 'wine-system' && !(await findWineVersions(home)).some(version => version.path === runner))) {
+    const file = runner === 'wine-system' ? await findLinuxCommand('wine', process.env) : await hostPath(runner.slice(5));
+    if (!file || (runner !== 'wine-system' && !(await findWineVersions(locations.home)).some(version => version.path === runner))) {
       throw new Error('A versão selecionada do Wine não foi encontrada.');
     }
     return { file, environment: { WINEPREFIX: prefix } };
   }
-  if (runner !== automaticProton) {
-    if (!await isProtonDirectory(runner)) throw new Error('A versão selecionada do Proton não foi encontrada.');
-    const manifest = path.join(runner, 'toolmanifest.vdf');
-    if (!await fileExists(manifest) && !await runHostTool('test', ['-f', manifest], { timeout: 3500 }).then(() => true, () => false)) {
-      throw new Error('Este Proton não contém o manifesto de runtime. Escolha outra versão ou reinstale esta.');
+  if (runner === automaticProton) {
+    const versions = await findProtonVersions(locations);
+    const ge = versions.filter(({ name }) => /^GE-Proton\d+-\d+(?:[.-]\w+)?(?:-x86_64|-aarch64)?$/i.test(name) &&
+      !(process.arch === 'x64' && /-aarch64$/i.test(name)) && !(process.arch === 'arm64' && /-x86_64$/i.test(name)));
+    runner = undefined;
+    for (const version of ge) {
+      if (!await hasRuntimeManifest(version.path) || !await hostExists(path.join(version.path, 'files/share/wine'), '-d')) continue;
+      runner = version.path;
+      break;
     }
+    runner ||= await installLatestGE(locations.managed);
   }
+  runner = await hostPath(runner);
+  const entry = path.join(runner, 'proton');
+  const [isFile, executable, manifest, wine] = await Promise.all([
+    hostExists(entry, '-f'), hostExists(entry, '-x'), hasRuntimeManifest(runner),
+    hostExists(path.join(runner, 'files/share/wine'), '-d')
+  ]);
+  if (!isFile || !executable) throw new Error('O arquivo proton não existe ou não é executável no Linux.');
+  if (!manifest) {
+    throw new Error('Este Proton não contém o manifesto de runtime. Escolha outra versão ou reinstale esta.');
+  }
+  if (!wine) throw new Error('A instalação do Proton está incompleta: falta a pasta files/share/wine.');
   const file = await ensureUmu(umuRoot);
-  return { file, environment: protonEnvironment(runner, prefix) };
+  return { file, environment: { PROTONPATH: runner, WINEPREFIX: prefix } };
 }
 
-module.exports = { automaticProton, wineSelection, storeGamePrefix, isWindowsGame, isProtonDirectory, findProtonVersions, findWineVersions,
-  latestGEProton, protonEnvironment, windowsRunner };
+module.exports = { automaticProton, wineSelection, storeGamePrefix, isWindowsGame, isProtonDirectory, protonDirectoryFromSelection, findProtonVersions, findWineVersions,
+  latestGEProton, windowsRunner };

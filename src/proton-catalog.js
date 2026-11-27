@@ -20,6 +20,55 @@ const downloads = new Map();
 const assetName = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,150}$/;
 const catalogError = 'Não foi possível consultar as versões de Proton.';
 const installError = 'Não foi possível instalar esta versão do Proton.';
+const latestGEError = 'Não foi possível verificar o GE-Proton.';
+const geTag = /^GE-Proton\d+-\d+(?:[.-]\w+)?$/;
+const geReleases = 'https://github.com/' + sources.ge + '/releases';
+
+async function request(url, options) {
+  try { return await fetch(url, options); }
+  catch (error) {
+    if (!process.versions.electron || options.signal?.aborted) throw error;
+    return require('electron').net.fetch(url, options);
+  }
+}
+
+async function latestGEFromWebsite() {
+  const response = await request(geReleases + '/latest', {
+    redirect: 'manual', signal: AbortSignal.timeout(10000)
+  });
+  const target = new URL(response.headers.get('location') || '', geReleases);
+  const tag = target.pathname.split('/').at(-1);
+  if (response.status < 300 || response.status >= 400 || !geTag.test(tag) ||
+      target.href !== geReleases + '/tag/' + tag) throw new Error(latestGEError);
+  return tag;
+}
+
+async function latestGERelease() {
+  const response = await request('https://api.github.com/repos/' + sources.ge + '/releases/latest', {
+    headers: { Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(12000)
+  }).catch(() => null);
+  const release = response?.ok ? await response.json().catch(() => null) : null;
+  if (geTag.test(release?.tag_name || '')) return release;
+  const tag = await latestGEFromWebsite().catch(() => null);
+  if (!tag) throw new Error(latestGEError);
+  return { tag_name: tag, websiteOnly: true };
+}
+
+async function geWebsitePackage(release, arch) {
+  const suffixes = arch === 'arm64' ? ['-aarch64'] : arch === 'x64' ? ['-x86_64', ''] : [];
+  for (const suffix of suffixes) {
+    const name = release.tag_name + suffix;
+    const base = geReleases + '/download/' + release.tag_name + '/' + name;
+    const expected = await readChecksum(base + '.sha512sum').catch(() => null);
+    if (expected) return { id: 'ge:' + name, name, url: base + '.tar.gz', sha512: expected };
+  }
+  throw new Error(installError);
+}
+
+function officialReleases(source) {
+  if (!Object.hasOwn(sources, source)) throw new Error(catalogError);
+  return 'https://github.com/' + sources[source] + '/releases';
+}
 
 function matchesAsset(source, name, arch) {
   if (arch === 'arm64') return source === 'ge' && /^GE-Proton[\w.-]+-aarch64\.tar\.gz$/i.test(name);
@@ -52,13 +101,20 @@ async function getPage(source, page) {
   const key = source + ':' + page;
   const previous = catalog.get(key);
   if (previous && Date.now() < previous.expires) return previous.result;
-  const response = await fetch('https://api.github.com/repos/' + sources[source] +
+  const response = await request('https://api.github.com/repos/' + sources[source] +
     '/releases?per_page=' + pageSize + '&page=' + page, {
     headers: { Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(12000)
   }).catch(() => null);
-  if (!response?.ok) throw new Error(catalogError);
-  const result = await response.json().catch(() => null);
-  if (!Array.isArray(result)) throw new Error(catalogError);
+  const result = response?.ok ? await response.json().catch(() => null) : null;
+  if (!Array.isArray(result)) {
+    if (source !== 'ge' || page !== 1) throw new Error(catalogError);
+    const entry = await latestGEFromWebsite()
+      .then(tag_name => geWebsitePackage({ tag_name }, process.arch)).catch(() => null);
+    if (!entry) throw new Error(catalogError);
+    const value = { entries: [entry], next: false, websiteOnly: true };
+    catalog.set(key, { expires: Date.now() + 60000, result: value });
+    return value;
+  }
   const entries = result.flatMap(release => releasePackages(source, release, process.arch));
   const value = { entries, next: page < 60 && /rel="next"/.test(response.headers.get('link') || '') };
   catalog.set(key, { expires: Date.now() + 300000, result: value });
@@ -70,48 +126,54 @@ async function installed(root, name) {
   try {
     if (!(await fs.lstat(launcher)).isFile()) return false;
     await fs.access(launcher, constants.X_OK);
-    return true;
+    return (await fs.stat(path.join(root, name, 'toolmanifest.vdf'))).isFile();
   } catch { return false; }
 }
 
 async function listReleases(root, source, page) {
-  const { entries, next } = await getPage(source, page);
-  return { next, entries: await Promise.all(entries.map(async ({ id, name, size }) =>
+  const { entries, next, websiteOnly } = await getPage(source, page);
+  return { next, websiteOnly, entries: await Promise.all(entries.map(async ({ id, name, size }) =>
     ({ id, name, size, installed: await installed(root, name) }))) };
 }
 
-async function checksumFor(entry) {
-  if (entry.digest) return { kind: 'sha256', expected: entry.digest };
-  const response = await fetch(entry.checksum, { signal: AbortSignal.timeout(12000) });
+async function readChecksum(url) {
+  const response = await request(url, { signal: AbortSignal.timeout(12000) });
   if (!response.ok || Number(response.headers.get('content-length')) > 8192) throw new Error(installError);
   const body = await response.text();
   const expected = body.length <= 8192 && /^([a-f0-9]{128})(?:\s|$)/i.exec(body.trim())?.[1];
   if (!expected) throw new Error(installError);
-  return { kind: 'sha512', expected: expected.toLowerCase() };
+  return expected.toLowerCase();
+}
+
+async function checksumFor(entry) {
+  if (entry.digest) return { kind: 'sha256', expected: entry.digest };
+  return { kind: 'sha512', expected: entry.sha512 || await readChecksum(entry.checksum) };
 }
 
 async function downloadBundle(entry, archive, progress) {
   const { kind, expected } = await checksumFor(entry);
   const controller = AbortSignal.timeout(1800000);
-  const response = await fetch(entry.url, { signal: controller });
+  const response = await request(entry.url, { signal: controller });
   if (!response.ok || !response.body) throw new Error(installError);
+  const declaredSize = Number(response.headers.get('content-length'));
+  const total = entry.size || (declaredSize > 0 && declaredSize <= maxBytes ? declaredSize : 0);
   const hash = createHash(kind);
   let received = 0;
   let last = 0;
   const track = new Transform({
     transform(chunk, _, done) {
       received += chunk.length;
-      if (received > entry.size) return done(new Error(installError));
+      if (received > (total || maxBytes)) return done(new Error(installError));
       hash.update(chunk);
       if (Date.now() - last > 500) {
-        progress('download', received, entry.size);
+        progress('download', received, total);
         last = Date.now();
       }
       done(null, chunk);
     }
   });
   await pipeline(Readable.fromWeb(response.body), track, createWriteStream(archive, { flags: 'wx', mode: 0o600 }), { signal: controller });
-  if (received !== entry.size || hash.digest('hex') !== expected) throw new Error('A verificação do arquivo de Proton falhou.');
+  if ((total && received !== total) || hash.digest('hex') !== expected) throw new Error('A verificação do arquivo de Proton falhou.');
 }
 
 async function installBundle(root, entry, progress) {
@@ -140,13 +202,26 @@ async function installBundle(root, entry, progress) {
 async function installRelease(root, id, progress) {
   const entry = [...catalog.values()].flatMap(page => page.result.entries).find(item => item.id === id);
   if (!entry) throw new Error(catalogError);
-  if (downloads.has(id)) throw new Error('Esta versão já está sendo instalada.');
-  const pending = installBundle(root, entry, progress);
-  downloads.set(id, pending);
-  try { await pending; }
-  catch (error) {
-    throw new Error(error.message === 'A verificação do arquivo de Proton falhou.' ? error.message : installError);
-  } finally { downloads.delete(id); }
+  await installEntry(root, entry, progress);
 }
 
-module.exports = { listReleases, installRelease, releasePackages };
+async function installEntry(root, entry, progress) {
+  const key = path.join(root, entry.name);
+  if (!downloads.has(key)) {
+    const pending = installBundle(root, entry, progress).catch(error => {
+      throw new Error(error.message === 'A verificação do arquivo de Proton falhou.' ? error.message : installError);
+    }).finally(() => downloads.delete(key));
+    downloads.set(key, pending);
+  }
+  await downloads.get(key);
+}
+
+async function installLatestGE(root, progress = () => {}) {
+  const release = await latestGERelease();
+  const [entry] = release.websiteOnly ? [await geWebsitePackage(release, process.arch)] : releasePackages('ge', release, process.arch);
+  if (!entry) throw new Error(installError);
+  await installEntry(root, entry, progress);
+  return path.join(root, entry.name);
+}
+
+module.exports = { listReleases, installRelease, releasePackages, latestGERelease, installLatestGE, officialReleases };

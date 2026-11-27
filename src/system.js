@@ -8,15 +8,15 @@ const { promisify } = require('node:util');
 const run = promisify(execFile);
 const inFlatpak = process.platform === 'linux' && Boolean(process.env.FLATPAK_ID);
 const macApps = {
-  steam: 'Steam', epic: 'Epic Games Launcher', gog: 'GOG Galaxy', heroic: 'Heroic',
+  steam: 'Steam', epic: 'Epic Games Launcher', gog: 'GOG Galaxy',
   battle: 'Battle.net', discord: 'Discord', obs: 'OBS', dolphin: 'Dolphin',
   retroarch: 'RetroArch', pcsx2: 'PCSX2', ppsspp: 'PPSSPP', rpcs3: 'RPCS3', shadps4: 'shadPS4', xemu: 'xemu'
 };
 
-function hostCommand(file, args, { cwd, environment = {} } = {}) {
+function hostCommand(file, args, { cwd, environment = {}, watchBus = false } = {}) {
   if (!inFlatpak) return [file, args];
   const env = Object.entries(environment).map(([key, value]) => '--env=' + key + '=' + value);
-  return ['flatpak-spawn', ['--host', ...env, ...(cwd ? ['--directory=' + cwd] : []), file, ...args]];
+  return ['flatpak-spawn', ['--host', ...(watchBus ? ['--watch-bus'] : []), ...env, ...(cwd ? ['--directory=' + cwd] : []), file, ...args]];
 }
 
 async function openWebLink(url, shell) {
@@ -346,8 +346,6 @@ async function detectStores(stores, platform, env, data, roots) {
       const userPrograms = env.LOCALAPPDATA ? [path.join(env.LOCALAPPDATA, 'Programs')] : [];
       const candidates = {
         steam: roots.map(root => path.join(root, 'steam.exe')),
-        heroic: [...userPrograms, ...programRoots].flatMap(root =>
-          ['heroic', 'Heroic Games Launcher', 'Heroic'].map(folder => path.join(root, folder, 'Heroic.exe'))),
         dolphin: programRoots.map(root => path.join(root, 'Dolphin', 'Dolphin.exe'))
       };
       const standardRoots = [...programRoots, ...userPrograms, env.LOCALAPPDATA].filter(Boolean);
@@ -374,15 +372,17 @@ async function detectStores(stores, platform, env, data, roots) {
   return Object.fromEntries(pairs);
 }
 
-function launch(file, args = [], { cwd = path.dirname(file), visible = false, environment = {}, hostCwd, wait = false, onLine, onClose } = {}) {
+function launch(file, args = [], { cwd = path.dirname(file), visible = false, environment = {}, hostCwd, wait = false, onLine, onClose, signal } = {}) {
+  if (signal?.aborted) return Promise.reject(signal.reason);
   if (process.platform === 'darwin' && file.endsWith('.app')) {
     return run('/usr/bin/open', ['-a', file, ...(args.length ? ['--args', ...args] : [])]);
   }
-  const [command, commandArgs] = hostCommand(file, args, { cwd: hostCwd, environment });
+  const [command, commandArgs] = hostCommand(file, args, { cwd: hostCwd, environment, watchBus: Boolean(signal) });
+  const processGroup = Boolean(signal) && !inFlatpak && process.platform !== 'win32';
   return new Promise((resolve, reject) => {
     const child = spawn(command, commandArgs, {
-      cwd: inFlatpak ? undefined : cwd, env: { ...process.env, ...environment },
-      detached: !onLine, stdio: onLine ? ['ignore', 'pipe', 'pipe'] : 'ignore', windowsHide: !visible
+      cwd: inFlatpak ? undefined : hostCwd || cwd, env: { ...process.env, ...environment },
+      detached: !onLine || processGroup, stdio: onLine ? ['ignore', 'pipe', 'pipe'] : 'ignore', windowsHide: !visible
     });
     if (onLine) for (const stream of [child.stdout, child.stderr]) {
       let remainder = '';
@@ -396,8 +396,37 @@ function launch(file, args = [], { cwd = path.dirname(file), visible = false, en
     }
     child.once('error', reject);
     if (onClose) child.once('close', onClose);
+    if (signal) {
+      let force;
+      const send = killSignal => {
+        try {
+          if (processGroup) process.kill(-child.pid, killSignal);
+          else child.kill(killSignal);
+        } catch {}
+      };
+      const abort = () => {
+        if (!child.pid || child.exitCode !== null || child.signalCode !== null) return;
+        if (process.platform === 'win32') {
+          execFile('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, timeout: 5000 },
+            error => { if (error && child.exitCode === null && child.signalCode === null) send('SIGTERM'); });
+        } else {
+          send('SIGINT');
+          force = setTimeout(() => send('SIGKILL'), 4000);
+          force.unref();
+        }
+      };
+      signal.addEventListener('abort', abort, { once: true });
+      child.once('close', () => {
+        signal.removeEventListener('abort', abort);
+        clearTimeout(force);
+      });
+    }
     if (wait) {
-      child.once('close', code => code === 0 ? resolve() : reject(new Error('Process exited with code ' + code)));
+      child.once('close', code => {
+        if (signal?.aborted) reject(signal.reason);
+        else if (code === 0) resolve();
+        else reject(new Error('Process exited with code ' + code));
+      });
       return;
     }
     child.once('spawn', () => {
@@ -407,5 +436,25 @@ function launch(file, args = [], { cwd = path.dirname(file), visible = false, en
   });
 }
 
+async function launchWindowsPortable(file, onFailure) {
+  const start = Date.now();
+  try {
+    return await launch(file, [], { cwd: path.dirname(file), onClose: code => {
+      if (code && Date.now() - start < 5000) onFailure(code);
+    } });
+  } catch (error) {
+    if (!['EACCES', 'EPERM', 'UNKNOWN'].includes(error.code)) throw error;
+  }
+  const script = "$ErrorActionPreference = 'Stop'; " +
+    "$game = Start-Process -FilePath $env:PERAGAMES_PORTABLE_EXE -WorkingDirectory $env:PERAGAMES_PORTABLE_CWD -PassThru; " +
+    "if ($game.WaitForExit(5000)) { $game.ExitCode }";
+  const { stdout } = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+    env: { ...process.env, PERAGAMES_PORTABLE_EXE: file, PERAGAMES_PORTABLE_CWD: path.dirname(file) },
+    windowsHide: true, timeout: 15000
+  });
+  const code = Number(stdout.trim());
+  if (code) onFailure(code);
+}
+
 module.exports = { getSteamRoots, steamGames, steamShortcuts, readSteamShortcuts, gpuModels, steamDownloads, readLibraryFolders, readVdfString, detectStores, fileExists, launch, isMacBundle,
-  macApps, findLinuxCommand, openWebLink, runHostTool, flathubId, installFlatpak, openLinuxSoftware };
+  macApps, findLinuxCommand, openWebLink, runHostTool, flathubId, installFlatpak, openLinuxSoftware, launchWindowsPortable };

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.PeraTV.PeraGames</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>LicenseRef-proprietary</project_license>
+  <name>PeraGames</name>
+  <summary>Organize and launch games from one library</summary>
+  <summary xml:lang="pt-BR">Organize e inicie seus jogos em uma biblioteca</summary>
+  <developer id="io.github.peratv">
+    <name>PeraTV</name>
+  </developer>
+  <description>
+    <p>PeraGames brings local games, emulators and games from Steam, Epic Games, GOG and Amazon Games into one library. It provides cover art, launch settings and a controller-friendly TV view.</p>
+    <p xml:lang="pt-BR">O PeraGames reúne jogos locais, emuladores e jogos da Steam, Epic Games, GOG e Amazon Games. A biblioteca oferece capas, configurações de inicialização e um Modo TV para navegar com controle.</p>
+    <p>On Linux, Windows games can use Proton through UMU. Compatibility depends on the game and its anti-cheat support. Store accounts and store-specific components may be required.</p>
+    <p xml:lang="pt-BR">No Linux, jogos Windows podem usar Proton por meio do UMU. A compatibilidade varia por jogo e sistema anti-cheat. Algumas lojas exigem conta e componentes próprios.</p>
+    <p>The Flatpak requests network access for stores, metadata and downloads, and access to X11, Wayland, PulseAudio, shared memory and all devices for display, audio, graphics and controllers. It reads the home directory, removable media and the Steam and Heroic locations listed in the manifest. It uses the Flatpak service to start store tools, Wine and UMU on the host outside the sandbox, with the current user's permissions.</p>
+    <p xml:lang="pt-BR">O Flatpak solicita rede para lojas, metadados e downloads. Usa X11, Wayland, PulseAudio, memória compartilhada e acesso a todos os dispositivos para vídeo, áudio, GPU e controles. Lê a pasta pessoal, mídias removíveis e as pastas da Steam e do Heroic listadas no manifest. Usa o serviço do Flatpak para executar ferramentas das lojas, Wine e UMU no host fora do sandbox, com as permissões do usuário atual.</p>
+  </description>
+  <launchable type="desktop-id">io.github.PeraTV.PeraGames.desktop</launchable>
+  <icon type="stock">io.github.PeraTV.PeraGames</icon>
+  <categories><category>Game</category></categories>
+  <url type="homepage">https://github.com/PeraTV/PeraGames</url>
+  <url type="bugtracker">https://github.com/PeraTV/PeraGames/issues</url>
+  <url type="help">https://github.com/PeraTV/PeraGames#readme</url>
+  <url type="vcs-browser">https://github.com/PeraTV/PeraGames</url>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Game library</caption>
+      <caption xml:lang="pt-BR">Biblioteca de jogos</caption>
+      <image>https://raw.githubusercontent.com/PeraTV/PeraGames/aa8e54d6e321c0209d7fe6b22a4de622f37d1111/docs/screenshots/library.jpg</image>
+    </screenshot>
+    <screenshot>
+      <caption>Controller-friendly TV mode</caption>
+      <caption xml:lang="pt-BR">Modo TV para navegar com controle</caption>
+      <image>https://raw.githubusercontent.com/PeraTV/PeraGames/aa8e54d6e321c0209d7fe6b22a4de622f37d1111/docs/screenshots/tv-cinema.jpg</image>
+    </screenshot>
+  </screenshots>
+  <releases>
+    <release version="0.22.8" date="2026-11-27">
+      <description><p>Improved downloads, favorites, TV mode and Windows game compatibility on Linux.</p></description>
+      <url>https://github.com/PeraTV/PeraGames/releases/tag/v0.22.8</url>
+    </release>
+    <release version="0.22.7" date="2026-11-26">
+      <description><p>Improved the TV library, imported Steam shortcuts and updated compatibility tools.</p></description>
+      <url>https://github.com/PeraTV/PeraGames/releases/tag/v0.22.7</url>
+    </release>
+    <release version="0.22.6" date="2026-11-26">
+      <description><p>Adjusted cover layouts in the library.</p></description>
+    </release>
+  </releases>
+  <content_rating type="oars-1.1"/>
+</component>

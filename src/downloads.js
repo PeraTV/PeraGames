@@ -17,22 +17,29 @@ function createDownloads(publish) {
     const entry = Array.from(jobs.values()).find(item => item.job.status === 'queued');
     if (!entry) return;
     active = true;
-    const { job, task } = entry;
+    const { job, task, controller } = entry;
+    const { signal } = controller;
     job.status = 'running';
     changed();
     let lastUpdate = 0;
     try {
       await task(progress => {
-        if (progress === undefined || (job.progress !== undefined && progress <= job.progress)) return;
+        if (signal.aborted || progress === undefined || (job.progress !== undefined && progress <= job.progress)) return;
         job.progress = progress;
         if (Date.now() - lastUpdate >= 350) {
           lastUpdate = Date.now();
           changed();
         }
+      }, signal, () => {
+        signal.throwIfAborted();
+        job.status = 'finishing';
+        changed();
       });
+      signal.throwIfAborted();
       Object.assign(job, { status: 'done', progress: 100 });
     } catch (error) {
-      Object.assign(job, { status: 'failed', error: error.message });
+      if (signal.aborted) job.status = 'cancelled';
+      else Object.assign(job, { status: 'failed', error: error.message });
     } finally {
       active = false;
       changed();
@@ -41,7 +48,7 @@ function createDownloads(publish) {
   }
   return {
     list,
-    has: id => ['queued', 'running'].includes(jobs.get(id)?.job.status),
+    has: id => ['queued', 'running', 'cancelling', 'finishing'].includes(jobs.get(id)?.job.status),
     add(id, name, source, task) {
       if (this.has(id)) return;
       if (jobs.size >= 100) {
@@ -50,17 +57,24 @@ function createDownloads(publish) {
         jobs.delete(old.job.id);
       }
       jobs.delete(id);
-      jobs.set(id, { job: { id, source, name, status: 'queued' }, task });
+      jobs.set(id, { job: { id, source, name, status: 'queued' }, task, controller: new AbortController() });
       changed();
       void run();
     },
     retry(id) {
       const entry = jobs.get(id);
-      if (entry?.job.status === 'failed') this.add(id, entry.job.name, entry.job.source, entry.task);
+      if (['failed', 'cancelled'].includes(entry?.job.status)) this.add(id, entry.job.name, entry.job.source, entry.task);
+    },
+    cancel(id) {
+      const entry = jobs.get(id);
+      if (!entry || !['queued', 'running'].includes(entry.job.status)) return;
+      entry.job.status = entry.job.status === 'queued' ? 'cancelled' : 'cancelling';
+      entry.controller.abort();
+      changed();
     },
     remove(id) {
       const entry = jobs.get(id);
-      if (entry && entry.job.status !== 'running') {
+      if (entry && !['running', 'cancelling', 'finishing'].includes(entry.job.status)) {
         jobs.delete(id);
         changed();
       }

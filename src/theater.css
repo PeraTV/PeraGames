@@ -38,25 +38,28 @@
 }
 #theater[data-layout][data-category="pc"] .tv-shelf h2 { display: flex; }
 #theater[data-layout][data-category="pc"] .theater-deck {
-  display: grid; flex: 1; height: auto; grid-template: none; grid-auto-rows: auto;
-  grid-template-columns: repeat(auto-fill, minmax(clamp(100px, 10vw, 156px), 1fr));
+  --pc-cover-height: clamp(148px, 15vw, 234px);
+  display: grid; flex: 1; min-height: 0; height: auto; grid-template: none;
+  grid-auto-rows: var(--pc-cover-height);
+  grid-template-columns: repeat(auto-fill, minmax(calc(var(--pc-cover-height) * 2 / 3), 1fr));
   overflow: auto; align-items: start; justify-items: stretch; align-content: start; scroll-snap-type: none;
 }
 #theater[data-layout][data-category="pc"] .tv-card {
-  display: block; grid-area: auto; height: auto; width: 100%; max-height: none;
-  aspect-ratio: 2 / 3; transform: none; box-shadow: none;
+  display: block; grid-area: auto; height: 100%; width: 100%; max-height: none;
+  transform: none; box-shadow: none;
 }
 #theater[data-layout][data-category="pc"] .tv-card img.tv-card-cover {
-  inset: 0; width: 100%; height: 100%; border-radius: inherit; object-fit: cover; object-position: center; transform: none;
+  position: absolute; inset: 0; width: 100%; height: 100%; border-radius: inherit;
+  object-fit: cover; object-position: center; transform: none; filter: none;
 }
 #theater[data-layout][data-category="pc"] .tv-card img.tv-card-cover[hidden][src] { display: block !important; visibility: hidden; }
-#theater[data-layout][data-category="pc"] .tv-card span {
-  inset: auto 0 0; display: block; visibility: visible; transform: none; padding: 6px 8px;
+#theater[data-layout][data-category="pc"] .tv-card > span {
+  position: absolute; inset: auto 0 0; display: block; visibility: visible; transform: none; padding: 6px 8px;
   font-size: clamp(12px, 1vw, 16px); text-align: left; color: #fff; background: #180c12d9;
 }
-#theater[data-layout="gallery"] .tv-library-pages { position: absolute; z-index: 2; top: 0; right: 8vw; pointer-events: auto; }
-.tv-card.tv-uninstalled img { opacity: .73; }
-body:not([data-color-uninstalled]) .tv-card.tv-uninstalled img { filter: grayscale(.8); }
+#theater[data-layout][data-category="pc"] .tv-card::after { display: none; }
+#theater[data-layout="gallery"]:not([data-category="pc"]) .tv-library-pages { position: absolute; z-index: 2; top: 0; right: 8vw; pointer-events: auto; }
+body:not([data-color-uninstalled]) .tv-card.tv-uninstalled img { opacity: .73; filter: grayscale(1); }
 @media (max-width: 640px) { .tv-search-layout { grid-template-columns: 1fr; } }
 .tv-icon-definitions { position: absolute; width: 0; height: 0; pointer-events: none; }
 .tv-nav-icon {
@@ -520,9 +523,6 @@ body:not([data-color-uninstalled]) .tv-card.tv-uninstalled img { filter: graysca
 .gallery-launcher:last-child { border-radius: 0 24px 24px 0; }
 .gallery-launcher .store-mark { width: clamp(22px,2.15vw,34px); height: clamp(22px,2.15vw,34px); object-fit: contain; }
 
-#theater[data-layout="gallery"] .tv-card-cover.landscape {
-  position: absolute; inset: 50% 0 auto; width: 100%; height: auto; transform: translateY(-50%);
-}
 #theater:is([data-layout="cinema"], [data-layout="gallery"]) .tv-card:has(.landscape) .tv-card-ambient { display: none; }
 #tv-gallery-positions {
   display: flex; justify-content: center; align-items: center; gap: 12px; min-height: 16px;
@@ -531,6 +531,7 @@ body:not([data-color-uninstalled]) .tv-card.tv-uninstalled img { filter: graysca
 .tv-position { width: 9px; height: 9px; border-radius: 50%; background: color-mix(in srgb, var(--tv-accent), transparent 65%); }
 .tv-position.is-current { background: var(--tv-accent); box-shadow: 0 0 9px var(--tv-accent); }
 #theater[data-layout="cinema"] .tv-system-card img { object-position: center 44%; }
+#theater[data-layout] .tv-system-card img.tv-console-mark { object-fit: contain; object-position: center; padding: 4px 6px 18px; }
 #theater[data-layout="cinema"] .tv-system-card span {
   font-size: clamp(13px, 1.22vw, 24px); white-space: normal;
 }

@@ -88,6 +88,15 @@ Fechar detalhes|Close details
 Sobre o jogo|About this game
 Personalizar ficha|Customize game details
 Escolher capa|Choose cover
+Trocar capa|Change cover
+Trocar executável|Change executable
+Faltou espaço em disco ao preparar o ambiente do Proton para {name}.|The Proton environment for {name} ran out of disk space.
+O Wine não conseguiu carregar o arquivo l_intl.nls ao iniciar {name}. Confira a extração do Proton ou selecione outra versão.|Wine could not load l_intl.nls while starting {name}. Check the Proton extraction or select another version.
+O Linux bloqueou a criação do ambiente isolado do Proton para {name}.|Linux blocked the creation of the isolated Proton environment for {name}.
+O UMU não encontrou a instalação do Proton para {name}.|UMU could not find the Proton installation for {name}.
+O UMU iniciou, mas falhou ao carregar o Proton ou o Wine de {name}.|UMU started but could not load Proton or Wine for {name}.
+O UMU não encontrou um runtime compatível com o Proton selecionado para {name}.|UMU could not find a runtime compatible with the selected Proton version for {name}.
+O UMU não conseguiu acessar o servidor necessário para preparar o Proton para {name}.|UMU could not reach the server required to prepare Proton for {name}.
 Restaurar capa|Restore cover
 Escolher fundo HD|Choose HD background
 Restaurar fundo|Restore background
@@ -233,9 +242,6 @@ Site oficial|Official website
 Aplicativo adicionado manualmente.|Manually added application.
 Monitore o uso da GPU, temperaturas e desempenho no Windows.|Monitor GPU usage, temperatures, and performance on Windows.
 Sua biblioteca Steam e a loja da Valve.|Your Steam library and Valve's store.
-Abra o Epic Games Launcher para acessar sua biblioteca. No Linux, acesse sua conta pelo Heroic.|Open Epic Games Launcher to access your library. On Linux, sign in through Heroic.
-Acesse sua biblioteca pelo GOG GALAXY. No Linux, use sua conta GOG no Heroic.|Access your library through GOG GALAXY. On Linux, use your GOG account with Heroic.
-Acesse os jogos da Amazon. No Linux, abra sua biblioteca pelo Heroic.|Access your Amazon games. On Linux, open your library through Heroic.
 Acesse jogos da Epic Games, GOG e Amazon Games.|Access games from Epic Games, GOG, and Amazon Games.
 Acesse sua biblioteca Xbox no PC e o Game Pass.|Access your Xbox library and Game Pass on PC.
 Abra o launcher da Blizzard e gerencie seus jogos.|Open Blizzard's launcher and manage your games.
@@ -279,8 +285,78 @@ Verificar GE-Proton|Check for GE-Proton releases
 Instalar umu-launcher|Install umu-launcher
 Usar prefixo Wine existente|Use an existing Wine prefix
 Voltar ao prefixo padrão|Use the default prefix
-GE-Proton mais recente (automático)|Latest GE-Proton (automatic)
-O modo automático baixa e atualiza o GE-Proton ao iniciar o jogo.|Automatic mode downloads and updates GE-Proton when launching the game.
+GE-Proton automático|Automatic GE-Proton
+Pasta do Proton: {folder}|Proton folder: {folder}
+Diagnosticar jogo|Diagnose game
+Diagnóstico do PeraGames|PeraGames diagnostics
+Copiar relatório seguro|Copy safe report
+Gere o diagnóstico antes de copiar.|Generate the report before copying.
+Não foi possível verificar o ambiente do jogo.|Could not check the game environment.
+Relatório copiado.|Report copied.
+Não foi possível copiar o relatório.|Could not copy the report.
+Pasta do jogo|Game folder
+Executável do jogo|Game executable
+Diretório de trabalho|Working directory
+Prefixo do jogo|Game prefix
+Backup do prefixo|Prefix backup
+Proton ou Wine selecionado|Selected Proton or Wine
+Acesso ao host pelo Flatpak|Flatpak host access
+Vulkan no host|Host Vulkan
+Vulkan e OpenGL de 32 bits|32-bit Vulkan and OpenGL
+Autenticação da loja|Store authentication
+Dependência|Dependency
+Processo do jogo|Game process
+Ausente ou inacessível|Missing or inaccessible
+Não verificado|Not verified
+Ainda não criado|Not created yet
+Não se aplica|Not applicable
+Detectado, sem teste de execução|Detected without an execution test
+Falhou|Failed
+Última etapa com falha|Last failed stage
+Falha na etapa {stage}|Failed at {stage}
+Perfil sugerido — Steam {id}, UMU umu-{id}. Componentes: {components}|Suggested profile — Steam {id}, UMU umu-{id}. Components: {components}
+Usar identificadores sugeridos|Use suggested IDs
+Não há perfil recomendado para este jogo.|There is no recommended profile for this game.
+Confirme a operação do prefixo.|Confirm the prefix operation.
+Rodar o instalador em uma cópia do prefixo e manter o original para restauração?|Run the installer on a copy of the prefix and keep the original available for restoration?
+Instalar {components} em uma cópia? O prefixo com os saves ficará guardado.|Install {components} into a copy? The prefix with the saves will be kept.
+Voltar ao prefixo anterior? Os saves do prefixo atual ficarão na pasta guardada.|Return to the previous prefix? The current prefix's saves will remain in the saved folder.
+Ajuda com jogos Windows|Windows game help
+Escolha uma versão do Proton na ficha do jogo. Comece pelo GE-Proton automático. Use Winetricks para instalar apenas os componentes que esse jogo precisa.|Choose Proton from the game's details. Start with automatic GE-Proton. Use Winetricks to install only the components the game needs.
+O prefixo pode guardar saves em drive_c/users. Alguns jogos usam Documentos, a pasta de instalação ou a nuvem da loja. Recriar usa um prefixo vazio. Restaurar volta ao prefixo anterior e guarda o atual.|The prefix can store saves in drive_c/users. Some games use Documents, the install folder, or cloud saves. Recreating starts with an empty prefix. Restoring reactivates the previous prefix and keeps the current one.
+Os prefixos gerenciados ficam na pasta prefixes do PeraGames. As cópias ficam em prefixes/copies. Use Diagnosticar jogo para copiar um relatório sem caminhos pessoais ou credenciais.|Managed prefixes are in the PeraGames prefixes directory. Copies are in prefixes/copies. Use Diagnose game to copy a report without personal paths or credentials.
+A compatibilidade varia por jogo. Alguns sistemas anti-cheat bloqueiam a execução pelo Proton.|Compatibility varies by game. Some anti-cheat systems block Proton.
+Falha ao preparar o Steam Linux Runtime para {name}. Abra Diagnosticar jogo para verificar o ambiente.|Preparing the Steam Linux Runtime for {name} failed. Open Diagnose game to check the environment.
+Uma dependência falhou ao iniciar {name}. Confira os componentes sugeridos em Compatibilidade com Proton.|A dependency failed while starting {name}. Check the suggested components in Proton compatibility.
+O processo de {name} encerrou com erro. Abra Diagnosticar jogo para verificar a etapa e o ambiente.|The {name} process exited with an error. Open Diagnose game to check the stage and environment.
+Opções de inicialização do jogo|Game launch options
+Argumentos, um por linha|Arguments, one per line
+Variáveis, uma por linha no formato NOME=valor|Variables, one per line as NAME=value
+Steam AppID (opcional)|Steam AppID (optional)
+ID UMU (opcional)|UMU ID (optional)
+Salvar opções|Save options
+Componentes e recuperação do prefixo|Components and prefix recovery
+O Winetricks instala em uma cópia do prefixo. Recriar começa com um prefixo vazio e guarda o anterior com os saves.|Winetricks installs into a copy of the prefix. Recreating starts with an empty prefix and keeps the previous one with its saves.
+Componentes recomendados para esta edição: {components}|Recommended components for this edition: {components}
+Componentes do Winetricks|Winetricks components
+Instalar em uma cópia|Install into a copy
+Recriar prefixo|Recreate prefix
+Restaurar prefixo anterior|Restore previous prefix
+Usar um prefixo novo e guardar o prefixo anterior com os saves?|Use a new prefix and keep the previous one with its saves?
+O caminho do seletor do Flatpak expirou ou não está acessível. Selecione a pasta ou arquivo novamente.|The Flatpak file chooser path expired or is inaccessible. Select the folder or file again.
+A pasta de trabalho não existe no Linux.|The working directory does not exist on Linux.
+A pasta de instalação não existe no Linux.|The installation directory does not exist on Linux.
+O executável do jogo não existe no Linux.|The game executable does not exist on Linux.
+O arquivo proton não existe ou não é executável no Linux.|The proton file is missing or cannot be executed on Linux.
+A instalação do Proton está incompleta: falta a pasta files/share/wine.|The Proton installation is incomplete: files/share/wine is missing.
+A pasta de trabalho de {name} não está disponível no Linux.|The working directory for {name} is not available on Linux.
+O executável de {name} não está disponível no Linux.|The executable for {name} is not available on Linux.
+O prefixo selecionado não existe no Linux.|The selected prefix does not exist on Linux.
+O backup deste prefixo não está disponível.|The backup of this prefix is not available.
+O Winetricks falhou. O prefixo anterior continua ativo.|Winetricks failed. The previous prefix is still active.
+Não foi possível copiar o prefixo. O prefixo anterior continua ativo.|Could not copy the prefix. The previous prefix is still active.
+As credenciais da loja são gerenciadas pelo PeraGames.|Store credentials are managed by PeraGames.
+Usa o GE-Proton mais recente que encontrar no computador. Se não houver nenhum, o PeraGames baixa uma versão oficial.|Uses the newest GE-Proton found on this computer. If none is installed, PeraGames downloads an official release.
 O PeraGames prepara o umu-launcher na primeira vez que você usar o Proton.|PeraGames sets up umu-launcher the first time you use Proton.
 O umu-launcher precisa de Python 3.10 ou mais recente no Linux.|umu-launcher requires Python 3.10 or newer on Linux.
 Não foi possível baixar o umu-launcher. Tente novamente.|Could not download umu-launcher. Try again.
@@ -407,8 +483,8 @@ O sistema não conseguiu mover a pasta do jogo para a lixeira.|The system could 
 Placa de vídeo|Graphics card
 Não identificada|Not identified
 O Xenia está disponível no Windows.|Xenia is available on Windows.
-O Windows não encontrou uma DLL necessária para {name}. Confira as dependências indicadas pelo projeto Recomp.|Windows could not find a DLL required by {name}. Check the requirements listed by the Recomp project.
-O executável de {name} encerrou. Confira o arquivo escolhido e os arquivos exigidos pelo projeto Recomp.|The executable for {name} exited. Check the selected executable and the files required by the Recomp project.
+O Windows não encontrou uma DLL necessária para {name}. Confira as dependências do jogo.|Windows could not find a DLL required by {name}. Check the game’s dependencies.
+O executável de {name} encerrou com erro. Confira o arquivo escolhido e os arquivos que acompanham o jogo.|The executable for {name} exited with an error. Check the selected executable and the files included with the game.
 {count} jogo|{count} game
 {count} jogos|{count} games
 {count} de {total} jogos|{count} of {total} games
@@ -417,6 +493,17 @@ Nome do jogo|Game title
 Digite parte do nome|Type part of the title
 Teclado na tela|On-screen keyboard
 Mostrar jogos não instalados|Show uninstalled games
+Baixar jogo?|Download game?
+Quer baixar {name} agora?|Download {name} now?
+Agora não|Not now
+Baixar jogo|Download game
+Cancelar download|Cancel download
+Cancelando…|Cancelling…
+Download cancelado|Download cancelled
+Confirmando instalação…|Confirming installation…
+Cancelar na Steam|Cancel in Steam
+Baixe o instalador oficial em Lojas e selecione Rodar instalador primeiro. Ao terminar, feche o launcher se ele abrir sozinho. O PeraGames procura o executável no mesmo prefixo.|Download the official installer from Stores and select Run installer first. Close the launcher if it opens after installation. PeraGames looks for its executable in the same prefix.
+Executável encontrado. Salve para abrir em Lojas.|Executable found. Save to open it from Stores.
 Resultados da busca|Search results
 Espaço|Space
 Limpar|Clear
@@ -463,9 +550,12 @@ Feche a Steam antes de salvar. Para instalar uma versão oficial, use Baixar pel
 Gerenciar Proton|Manage Proton
 Família do Proton|Proton family
 Carregar mais versões|Load more versions
+Abrir downloads oficiais|Open official downloads
+O catálogo está indisponível. A versão abaixo veio da página oficial.|The catalog is unavailable. The version below came from the official release page.
 Nenhuma versão encontrada para este sistema.|No releases found for this system.
 Preparando download…|Preparing download…
 Baixando Proton… {percent}%|Downloading Proton… {percent}%
+Baixando Proton… {size} MiB|Downloading Proton… {size} MiB
 Extraindo Proton…|Extracting Proton…
 Proton instalado. Selecione a versão no jogo ou launcher.|Proton installed. Select the version for your game or launcher.
 Não foi possível consultar as versões de Proton.|Could not retrieve the Proton versions.
