@@ -1485,9 +1485,11 @@ function renderTheater() {
     tile.addEventListener('focus', () => {
       if (tvGameKey(theaterGame) !== tile.dataset.game) selectTheaterGame(game);
     });
-    tile.addEventListener(layout === 'gallery' && !grid ? 'pointermove' : 'pointerenter', event => {
-      if (event.pointerType === 'mouse' && tvGameKey(theaterGame) !== tile.dataset.game) selectTheaterGame(game);
-    });
+    if (layout !== 'gallery' || grid) {
+      tile.addEventListener('pointerenter', event => {
+        if (event.pointerType === 'mouse' && tvGameKey(theaterGame) !== tile.dataset.game) selectTheaterGame(game);
+      });
+    }
     return tile;
   });
   deck.replaceChildren(...items);
@@ -1535,12 +1537,51 @@ function activeDialog() {
 
 const navigationTargets = 'button, summary, input:not([type="hidden"]), select, textarea, a[href]';
 
+function focusNavigationTarget(target) {
+  if (!target) return;
+  target.focus({ preventScroll: true });
+  target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
+function movePreferencesFocus(active, dx, dy, items) {
+  const menu = items.filter(node => node.matches('[data-settings]'));
+  const panel = items.filter(node => node.closest('.preferences-layout section'));
+  const tab = menu.find(node => node.getAttribute('aria-pressed') === 'true');
+  const close = byId('preferences-close');
+  const index = menu.indexOf(active);
+  if (active === close) {
+    if (dy > 0 || dx < 0) focusNavigationTarget(tab);
+    return;
+  }
+  if (index >= 0) {
+    if (dx > 0 && panel.length) {
+      focusNavigationTarget(panel[0]);
+    } else if (dy) {
+      focusNavigationTarget(index === 0 && dy < 0 ? close : menu[index + dy]);
+    }
+    return;
+  }
+  const position = panel.indexOf(active);
+  if (position === -1 || dx < 0) focusNavigationTarget(tab);
+  else if (dy) focusNavigationTarget(position === 0 && dy < 0 ? close : panel[position + dy]);
+}
+
 function focusDirection(key) {
   const [dx, dy] = directionKeys[key];
   const dialog = activeDialog();
   const root = dialog || (theater ? byId('theater') : document.body);
   const active = document.activeElement;
-  if (document.body.dataset.input === 'gamepad' && dx && active.matches('select')) {
+  const gamepad = document.body.dataset.input === 'gamepad';
+  if (gamepad && dx && active.matches('input[type="range"]')) {
+    const value = active.value;
+    active[dx > 0 ? 'stepUp' : 'stepDown']();
+    if (active.value !== value) {
+      active.dispatchEvent(new Event('input', { bubbles: true }));
+      active.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    return;
+  }
+  if (gamepad && dx && active.matches('select')) {
     const options = [...active.options].filter(option => !option.hidden && !option.disabled);
     if (!options.length) return;
     const index = options.findIndex(option => option.selected);
@@ -1551,14 +1592,8 @@ function focusDirection(key) {
   const controls = selector => [...root.querySelectorAll(selector)]
     .filter(node => !node.disabled && node.tabIndex >= 0 && node.getClientRects().length && getComputedStyle(node).visibility === 'visible' &&
       (!theater || dialog || !node.closest('.theater-foot')));
-  if (dialog && dialog.id !== 'tv-search-dialog') {
-    const items = controls(navigationTargets);
-    if (!items.length) return;
-    const direction = dx || dy;
-    const current = items.indexOf(active);
-    const next = current < 0 ? (direction < 0 ? items.length - 1 : 0) :
-      (current + direction + items.length) % items.length;
-    items[next].focus();
+  if (dialog?.id === 'preferences-dialog' && gamepad) {
+    movePreferencesFocus(active, dx, dy, controls(navigationTargets));
     return;
   }
   if (active === document.body || !root.contains(active)) {
@@ -1571,8 +1606,7 @@ function focusDirection(key) {
   if (inSystems && dx) {
     const systems = controls('.tv-system-card');
     const target = systems[systems.indexOf(active) + dx];
-    target?.focus({ preventScroll: true });
-    target?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    focusNavigationTarget(target);
     return;
   }
   if (!dialog && theater && theaterCategory !== 'pc' && active.matches('.tv-card')) {
@@ -1608,10 +1642,7 @@ function focusDirection(key) {
     .filter(candidate => candidate.distance > 8)
     .sort((a, b) => a.score - b.score);
   const target = destination?.sort((a, b) => Math.abs(center(a)[0] - x) - Math.abs(center(b)[0] - x))[0] || candidates[0]?.node;
-  if (target) {
-    target.focus({ preventScroll: true });
-    target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  }
+  focusNavigationTarget(target);
 }
 
 let lastPadMove = 0;
@@ -1648,7 +1679,7 @@ function stepNavigationTab(direction) {
 
 function goBack() {
   const dialog = activeDialog();
-  if (dialog) dialog.close();
+  if (dialog) dialog.requestClose();
   else if (theater) leaveTheater();
   else if (page !== 'home') {
     switchPage('home');
@@ -1956,8 +1987,14 @@ async function openPreferences(tab = 'accounts') {
   byId('prefs-zoom-value').value = byId('prefs-zoom').value + '%';
   for (const key of ['motion', 'titles', 'color']) byId('prefs-' + key).checked = Boolean(prefs[key]);
   byId('prefs-feedback').hidden = true;
-  if (!byId('preferences-dialog').open) byId('preferences-dialog').showModal();
-  await renderPreferencesTab(tab);
+  const dialog = byId('preferences-dialog');
+  const opening = !dialog.open;
+  if (opening) dialog.showModal();
+  const ready = renderPreferencesTab(tab);
+  if (opening && document.body.dataset.input === 'gamepad') {
+    dialog.querySelector('[data-settings][aria-pressed="true"]')?.focus();
+  }
+  await ready;
 }
 
 async function queueStoreGame(provider, id) {
