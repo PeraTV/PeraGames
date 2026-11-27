@@ -6,6 +6,15 @@ PeraGames brings PC games, emulators, and store shortcuts together in one librar
 
 ![PeraGames home screen](docs/screenshots/home.jpg)
 
+## What's new in 0.22.11
+
+- TV Mode shows uninstalled game covers in grayscale by default. Choose **Appearance** in TV Mode to enable colored covers.
+- **Check for updates** shows the release notes before installation. When PeraGames reopens after an update, the same window shows what changed in the installed version.
+- Use the on-screen arrows, keyboard, or analog stick to browse the Gallery. The controller can also navigate settings and adjust zoom. TV Mode buttons follow the selected palette.
+- Game details offer a cover picker with online previews and SteamGridDB integration.
+
+[Download PeraGames 0.22.11](https://github.com/PeraTV/PeraGames/releases/tag/v0.22.11) · [Report a problem](https://github.com/PeraTV/PeraGames/issues)
+
 ## Installation and updates
 
 Choose the installer for your system on the releases page. After installation, use the download icon in the PeraGames header to **check for app updates**. The **Refresh** button in the library rescans your game catalog.
@@ -70,6 +79,7 @@ To configure SteamGridDB, open **Settings → Integrations → Get a key from St
 | **PC library**<br>![PC library](docs/screenshots/library.jpg) | **Stores and tools**<br>![Stores and tools](docs/screenshots/stores.jpg) |
 | **Emulation hub**<br>![Emulation hub](docs/screenshots/emulators.jpg) | **Game information and favorites**<br>![Game information](docs/screenshots/game-details.jpg) |
 | **Custom spotlight**<br>![Spotlight settings](docs/screenshots/spotlight.jpg) | **Color palettes**<br>![Color palettes](docs/screenshots/palettes.jpg) |
+| **Game accounts**<br>![Game account settings](docs/screenshots/game-accounts.jpg) | **TV Mode startup**<br>![TV Mode startup settings](docs/screenshots/tv-startup.jpg) |
 
 Use **Add game** in the library to register an executable or shortcut. Open **Emulators** to import ROMs and browse systems. Store and emulator availability depends on your operating system.
 
@@ -83,6 +93,8 @@ Choose **Amber Cinema**, **Amber Panel**, or **Amber Gallery** in **Appearance**
 
 ![Amber Cinema](docs/screenshots/tv-cinema.jpg)
 
+![PC library in Cinema TV Mode](docs/screenshots/tv-pc-library.jpg)
+
 ### Amber Panel
 
 ![Amber Panel](docs/screenshots/tv-panel.jpg)
@@ -90,6 +102,8 @@ Choose **Amber Cinema**, **Amber Panel**, or **Amber Gallery** in **Appearance**
 ### Amber Gallery
 
 ![Amber Gallery](docs/screenshots/tv-gallery.jpg)
+
+![PC library in Gallery TV Mode](docs/screenshots/tv-gallery-library.jpg)
 
 ## Development
 

@@ -6,6 +6,15 @@ O PeraGames reúne jogos de PC, emuladores e atalhos de lojas em uma biblioteca.
 
 ![Tela inicial do PeraGames](docs/screenshots/home.jpg)
 
+## Novidades da versão 0.22.11
+
+- As capas dos jogos não instalados ficam cinza no Modo TV por padrão. Para usar capas coloridas, abra **Aparência** no Modo TV.
+- **Verificar atualizações** mostra o que mudou antes de instalar. Ao reabrir o PeraGames depois de atualizar, a mesma janela apresenta as novidades da versão instalada.
+- A Galeria troca de jogo pelas setas na tela, pelo teclado ou pelo analógico. O controle também navega nas configurações e ajusta o zoom. Os botões do Modo TV acompanham a paleta escolhida.
+- A ficha de jogo oferece prévias de capas online para escolher, com integração ao SteamGridDB.
+
+[Baixar PeraGames 0.22.11](https://github.com/PeraTV/PeraGames/releases/tag/v0.22.11) · [Relatar um problema](https://github.com/PeraTV/PeraGames/issues)
+
 ## Instalação e atualizações
 
 Na página de versões, escolha o instalador do seu sistema. Depois da instalação, abra o ícone de download no cabeçalho do PeraGames para **Verificar atualizações do app**. O botão **Atualizar**, na Biblioteca, relê o catálogo de jogos.
@@ -70,18 +79,21 @@ Para configurar o SteamGridDB, abra **Configurações → Integrações → Obte
 | **Biblioteca de PC**<br>![Biblioteca de PC](docs/screenshots/library.jpg) | **Lojas e ferramentas**<br>![Lojas e ferramentas](docs/screenshots/stores.jpg) |
 | **Central de emulação**<br>![Central de emulação](docs/screenshots/emulators.jpg) | **Sinopse e favoritos**<br>![Ficha de jogo](docs/screenshots/game-details.jpg) |
 | **Destaque personalizado**<br>![Personalização do destaque](docs/screenshots/spotlight.jpg) | **Paletas de cores**<br>![Paletas de cores](docs/screenshots/palettes.jpg) |
+| **Contas de jogos**<br>![Configurações de contas de jogos](docs/screenshots/game-accounts.jpg) | **Inicialização do Modo TV**<br>![Configurações de inicialização do Modo TV](docs/screenshots/tv-startup.jpg) |
 
 Na Biblioteca, use **Adicionar jogo** para cadastrar um executável ou atalho. A importação de ROMs e o acesso aos sistemas ficam em **Emuladores**. A disponibilidade de lojas e emuladores depende do sistema operacional.
 
 ## Modo TV
 
-Escolha **Cinema Âmbar**, **Painel Âmbar** ou **Galeria Âmbar** em **Aparência**. Use **A/Enter** para selecionar, **B/Esc** para voltar e **Y** para abrir a ficha do jogo e acessar os favoritos. No controle, **LB/RB** alternam entre as páginas.
+Escolha **Cinema Âmbar**, **Painel Âmbar** ou **Galeria Âmbar** em **Aparência**. Use **A/Enter** para selecionar, **B/Esc** para voltar e **Y** para abrir a ficha do jogo e acessar os favoritos. **LT/RT** avançam ou recuam oito jogos. **LB/RB** trocam de página em **Jogos de PC** e trocam de aba nas outras telas.
 
 ![Seletor de aparência do Modo TV](docs/screenshots/tv-appearance.jpg)
 
 ### Cinema Âmbar
 
 ![Cinema Âmbar](docs/screenshots/tv-cinema.jpg)
+
+![Biblioteca de PC no Modo TV Cinema](docs/screenshots/tv-pc-library.jpg)
 
 ### Painel Âmbar
 
@@ -90,6 +102,8 @@ Escolha **Cinema Âmbar**, **Painel Âmbar** ou **Galeria Âmbar** em **Aparênc
 ### Galeria Âmbar
 
 ![Galeria Âmbar](docs/screenshots/tv-gallery.jpg)
+
+![Biblioteca de PC no Modo TV Galeria](docs/screenshots/tv-gallery-library.jpg)
 
 ## Desenvolvimento
 
