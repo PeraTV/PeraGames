@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { lookupGame, steamAssets, titleKey } = require('../src/game-info');
 const { getCompatibility, protonDBPage } = require('../src/game-compatibility');
-const { findGridCover, verifyGridKey } = require('../src/steamgriddb');
+const { findGridCover, verifyGridKey, searchCoverGames, coverChoices, isCoverUrl } = require('../src/steamgriddb');
 const { romArguments } = require('../src/catalog');
 
 const response = data => ({ ok: true, json: async () => data });
@@ -45,6 +45,30 @@ test('SteamGridDB só usa um título exato e não revela a chave quando o servi�
   await assert.rejects(verifyGridKey('fixture-key'), {
     message: 'A chave do SteamGridDB não foi aceita.'
   });
+});
+
+test('lista títulos para escolha manual e retorna somente capas de origem reconhecida', async context => {
+  context.mock.method(globalThis, 'fetch', async input => {
+    const pathname = new URL(input).pathname;
+    if (pathname.includes('/autocomplete/')) return response({ success: true, data: [
+      { id: 82, name: 'Naruto Shippuden: Ultimate Ninja Storm 4' }, { id: '../untrusted', name: 'Outro' }
+    ] });
+    assert.equal(pathname, '/api/v2/grids/game/82');
+    return response({ success: true, data: [
+      { width: 600, height: 900, url: 'https://cdn.steamgriddb.com/grid/first.png', thumb: 'https://cdn.steamgriddb.com/thumb/first.png' },
+      { width: 600, height: 900, url: 'https://cdn.steamgriddb.com/grid/second.jpg', thumb: 'https://example.invalid/second.jpg' },
+      { width: 600, height: 900, url: 'https://example.invalid/grid/third.png' }
+    ] });
+  });
+  const [match] = await searchCoverGames('Naruto Storm', 'fixture-key');
+  assert.equal(match.id, '82');
+  assert.equal(match.name, 'Naruto Shippuden: Ultimate Ninja Storm 4');
+  const choices = await coverChoices({ gridId: match.id }, 'fixture-key');
+  assert.equal(choices.length, 2);
+  assert.match(choices[0].thumb, /\/thumb\//);
+  assert.equal(choices[1].thumb, choices[1].url);
+  assert.equal(isCoverUrl(choices[1].url), true);
+  assert.equal(isCoverUrl('https://cdn.steamgriddb.com.evil.invalid/grid/first.png'), false);
 });
 
 test('resolve a capa moderna e só aceita caminhos de arte reconhecidos', () => {

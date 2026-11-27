@@ -22,7 +22,7 @@ const { steamAccountGames } = require('./steam-account');
 const { browseSteam, steamAssets, lookupGame, cleanTitle, titleKey, featuredSteamArt } = require('./game-info');
 const { getCompatibility, protonDBPage } = require('./game-compatibility');
 const { createDownloads, createSteamDownloadTracker } = require('./downloads');
-const { findGridCover, preferencesUrl, verifyGridKey } = require('./steamgriddb');
+const { findGridCover, preferencesUrl, verifyGridKey, searchCoverGames, coverChoices, isCoverUrl } = require('./steamgriddb');
 const { romArtwork } = require('./rom-art');
 const { loginFlag, setTvLogin } = require('./tv-startup');
 const { version, updateRepository } = require('../package.json');
@@ -389,12 +389,29 @@ handle('downloads:remove', id => {
 });
 handle('downloads:retry', id => downloads.retry(id));
 handle('downloads:cancel', id => downloads.cancel(id));
-handle('downloads:steam', async () => {
+handle('downloads:steam', async (fromTv, window) => {
   const url = 'steam://open/downloads';
+  const fullScreen = fromTv === true && window.isFullScreen();
+  if (fullScreen) {
+    await new Promise(resolve => {
+      const finish = () => {
+        clearTimeout(timeout);
+        window.removeListener('leave-full-screen', finish);
+        resolve();
+      };
+      const timeout = setTimeout(finish, 1500);
+      window.once('leave-full-screen', finish);
+      window.setFullScreen(false);
+    });
+  }
   if (platform === 'linux' && detected.steam) {
     const steam = detected.steam;
     await launch(steam.file, [...steam.args, url]);
   } else await shell.openExternal(url);
+  if (fromTv === true) {
+    if (fullScreen) window.once('restore', () => window.setFullScreen(true));
+    window.minimize();
+  }
 });
 handle('downloads:steam-install', async value => {
   const input = typeof value === 'string' ? value.trim() : '';
@@ -1306,9 +1323,10 @@ async function playGame(id, window) {
   } else {
     if (!await runnable(game.file)) throw new Error('O executável foi movido ou removido.');
     if (platform === 'win32' && /\.exe$/i.test(game.file)) {
+      const shellLaunch = Boolean(data.recomp[id]) || await fileExists(path.join(path.dirname(game.file), 'launcher.ini'));
       await launchWindowsPortable(game.file, code => {
         if (code) storeStatus(code === 3221225781 || code === -1073741515 ? 'windows-dll' : 'windows-exit');
-      });
+      }, { shellLaunch });
     } else await launch(game.file);
   }
   if (!game.launcher) await updateData(copy => { copy.played[id] = Date.now(); });
@@ -1438,7 +1456,8 @@ handle('feature:pick-art', (_, window) => pickImage(window, 'Escolher imagem par
 handle('game:cover', async (id, window) => {
   const game = getGame(id);
   const cover = await pickImage(window, 'Escolher capa do jogo', 900);
-  if (cover) await updateData(copy => { copy.gameCovers[game.id] = cover; });
+  if (!cover) return;
+  await updateData(copy => { copy.gameCovers[game.id] = cover; });
   return state();
 });
 handle('game:reset-cover', async id => {
@@ -1478,6 +1497,58 @@ handle('game:cover-search', async ({ id, query }) => {
   await shell.openExternal('https://www.google.com/search?' + params);
 });
 handle('grid:preferences', () => openWebLink(preferencesUrl, shell));
+handle('grid:choices', async ({ id, query, gridId }) => {
+  const game = getGame(id);
+  const search = typeof query === 'string' ? query.trim().slice(0, 160) : '';
+  const detail = data.gameDetails[id];
+  const knownApp = /^https:\/\/store\.steampowered\.com\/app\/(\d{1,10})\/$/.exec(detail?.url || '')?.[1];
+  const appId = game.appId || knownApp;
+  const name = romAssets.get(id)?.name || game.name;
+  let covers = [];
+  let gridError;
+  try {
+    if (gridId) covers = await coverChoices({ gridId }, gridKey);
+    else if (search && gridKey) {
+      const games = await searchCoverGames(search, gridKey);
+      if (games.length) return { games };
+    } else if (!search) covers = await coverChoices({ appId }, gridKey);
+  } catch (error) {
+    gridError = error;
+  }
+  if (gridId && covers.length) return { covers };
+  const matchingTitle = !search || titleKey(name) === titleKey(search);
+  const suggestions = matchingTitle ? [detail?.cover, ...(romAssets.get(id)?.art || [])] : [];
+  if (search && !suggestions.some(isCoverUrl)) {
+    const info = await lookupGame({ ...game, appId: matchingTitle ? appId : undefined, name: search },
+      undefined, languageFor(systemLocale())).catch(() => null);
+    suggestions.push(info?.cover);
+  }
+  const listed = new Set(covers.map(cover => cover.url));
+  for (const url of new Set(suggestions.filter(isCoverUrl))) {
+    if (!listed.has(url)) covers.push({ url, thumb: url, source: new URL(url).hostname.split('.').slice(-2, -1)[0] });
+  }
+  if (!covers.length && gridError) throw gridError;
+  return { covers };
+});
+handle('grid:choose', async ({ id, url }) => {
+  const game = getGame(id);
+  if (!isCoverUrl(url)) throw new Error('Escolha uma capa da lista.');
+  const response = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(20000) }).catch(() => null);
+  if (!response?.ok || !response.body) throw new Error('Não foi possível baixar essa capa.');
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of response.body) {
+    size += chunk.length;
+    if (size > 12 * 1024 * 1024) throw new Error('Escolha uma imagem de até 12 MB.');
+    chunks.push(chunk);
+  }
+  let image = nativeImage.createFromBuffer(Buffer.concat(chunks, size));
+  if (image.isEmpty()) throw new Error('Não consegui abrir esta imagem.');
+  if (image.getSize().height > 900) image = image.resize({ height: 900 });
+  const selected = 'data:image/jpeg;base64,' + image.toJPEG(83).toString('base64');
+  await updateData(copy => { copy.gameCovers[game.id] = selected; });
+  return state();
+});
 handle('grid:key', async input => {
   const key = typeof input === 'string' ? input.trim() : null;
   if (key === null || (key && !/^[A-Za-z0-9_-]{16,128}$/.test(key))) {

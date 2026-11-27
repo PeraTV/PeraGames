@@ -231,8 +231,9 @@ body:not([data-color-uninstalled]) .tv-card.tv-uninstalled img { opacity: .73; f
 }
 .tv-controls { display: flex; gap: clamp(6px, 1.4vw, 22px); margin-left: auto; }
 #tv-input-label { align-self: center; color: #ddbec3; white-space: nowrap; }
-#tv-shoulder-hint { align-self: center; white-space: nowrap; padding-inline: .35em; }
-#tv-shoulder-hint kbd { font: inherit; padding: .08em .3em; border: 1px solid var(--tv-edge); border-radius: 5px; }
+:is(#tv-shoulder-hint, #tv-trigger-hint) { align-self: center; white-space: nowrap; padding-inline: .35em; }
+:is(#tv-shoulder-hint, #tv-trigger-hint) kbd { font: inherit; padding: .08em .3em; border: 1px solid var(--tv-edge); border-radius: 5px; }
+@media (max-width: 950px) { #tv-trigger-hint { display: none; } }
 .theater-foot button {
   display: inline-flex; align-items: center; gap: .5em; min-height: 30px;
   color: inherit; background: #fff0; border: 1px solid transparent; border-radius: 20px;
@@ -531,7 +532,13 @@ body:not([data-color-uninstalled]) .tv-card.tv-uninstalled img { opacity: .73; f
 .tv-position { width: 9px; height: 9px; border-radius: 50%; background: color-mix(in srgb, var(--tv-accent), transparent 65%); }
 .tv-position.is-current { background: var(--tv-accent); box-shadow: 0 0 9px var(--tv-accent); }
 #theater[data-layout="cinema"] .tv-system-card img { object-position: center 44%; }
-#theater[data-layout] .tv-system-card img.tv-console-mark { object-fit: contain; object-position: center; padding: 4px 6px 18px; }
+#theater[data-layout] .tv-system-card img.tv-console-mark {
+  width: 100%; height: 72%; object-fit: contain; object-position: center; padding: 6px 12px;
+}
+.tv-system-card[data-system="rpcs3"] { background: radial-gradient(ellipse at 50% 20%, #45457d, #210e26 82%); }
+.tv-system-card[data-system="shadps4"] { background: radial-gradient(ellipse at 50% 20%, #234b8e, #120d27 82%); }
+.tv-system-card[data-system="xemu"] { background: radial-gradient(ellipse at 50% 20%, #416c28, #132015 82%); }
+.tv-system-card[data-system="xenia"] { background: radial-gradient(ellipse at 50% 20%, #4a673a, #192615 82%); }
 #theater[data-layout="cinema"] .tv-system-card span {
   font-size: clamp(13px, 1.22vw, 24px); white-space: normal;
 }

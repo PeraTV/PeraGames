@@ -63,6 +63,8 @@ For **EA app**, **Battle.net**, and **Ubisoft Connect** on Linux, open the store
 
 ## Library and customization
 
+To configure SteamGridDB, open **Settings → Integrations → Get a key from SteamGridDB** and sign in with Steam. In SteamGridDB preferences, open **API**, select **Generate API Key**, and copy the key. Return to PeraGames, paste it into **SteamGridDB API key**, and select **Save key**.
+
 | | |
 | --- | --- |
 | **PC library**<br>![PC library](docs/screenshots/library.jpg) | **Stores and tools**<br>![Stores and tools](docs/screenshots/stores.jpg) |

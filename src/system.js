@@ -436,17 +436,19 @@ function launch(file, args = [], { cwd = path.dirname(file), visible = false, en
   });
 }
 
-async function launchWindowsPortable(file, onFailure) {
+async function launchWindowsPortable(file, onFailure, { shellLaunch = false } = {}) {
   const start = Date.now();
-  try {
-    return await launch(file, [], { cwd: path.dirname(file), onClose: code => {
-      if (code && Date.now() - start < 5000) onFailure(code);
-    } });
-  } catch (error) {
-    if (!['EACCES', 'EPERM', 'UNKNOWN'].includes(error.code)) throw error;
+  if (!shellLaunch) {
+    try {
+      return await launch(file, [], { visible: true, cwd: path.dirname(file), onClose: code => {
+        if (code && Date.now() - start < 5000) onFailure(code);
+      } });
+    } catch (error) {
+      if (!['EACCES', 'EPERM', 'UNKNOWN'].includes(error.code)) throw error;
+    }
   }
   const script = "$ErrorActionPreference = 'Stop'; " +
-    "$game = Start-Process -FilePath $env:PERAGAMES_PORTABLE_EXE -WorkingDirectory $env:PERAGAMES_PORTABLE_CWD -PassThru; " +
+    "$game = Start-Process -FilePath $env:PERAGAMES_PORTABLE_EXE -WorkingDirectory $env:PERAGAMES_PORTABLE_CWD -WindowStyle Normal -PassThru; " +
     "if ($game.WaitForExit(5000)) { $game.ExitCode }";
   const { stdout } = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
     env: { ...process.env, PERAGAMES_PORTABLE_EXE: file, PERAGAMES_PORTABLE_CWD: path.dirname(file) },

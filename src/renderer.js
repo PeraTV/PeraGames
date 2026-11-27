@@ -70,8 +70,8 @@ const officialMarks = {
   pcsx2: 'https://raw.githubusercontent.com/PCSX2/pcsx2/81526d4dc7cc/bin/resources/icons/AppIconLarge.png',
   ppsspp: 'https://raw.githubusercontent.com/hrydgard/ppsspp/a2f4ce214f22/source_assets/image/icon_regular.png'
 };
-const consoleMarks = Object.fromEntries(['rpcs3', 'shadps4', 'xemu', 'xenia']
-  .map(id => [id, 'assets/icons/' + id + '.svg']));
+const consoleMarks = Object.fromEntries(['dolphin', 'pcsx2', 'ppsspp', 'retroarch', 'rpcs3', 'shadps4', 'xemu', 'xenia']
+  .map(id => [id, 'assets/icons/' + id + (['rpcs3', 'shadps4', 'xemu'].includes(id) ? '.svg' : '.png')]));
 const systems = [
   ['wii', 'Nintendo Wii', 'Dolphin', 'dolphin', 'theme-wii', 'Wii.svg'],
   ['gamecube', 'Nintendo GameCube', 'Dolphin', 'dolphin', 'theme-gamecube', 'Nintendo_GameCube_symbol_logo.svg'],
@@ -361,6 +361,7 @@ function storeIcon(item) {
   image.alt = '';
   const slug = brandSlugs[item.id];
   const domain = brandDomains[item.id];
+  if (consoleMarks[item.id]) image.classList.add('emulator-mark');
   setArt(image, [consoleMarks[item.id], officialMarks[item.id], slug && ('https://cdn.simpleicons.org/' + slug + '/fff1e7'), item.executableIcon,
     domain && ('https://www.google.com/s2/favicons?sz=128&domain=' + domain)]);
   return image;
@@ -483,6 +484,7 @@ function renderGameDetails() {
   byId('game-setup-edit').hidden = !game.canEditSetup;
   byId('game-replace-executable').hidden = !game.canReplaceExecutable;
   byId('game-cover').hidden = Boolean(previewStoreGame);
+  byId('game-online-cover').hidden = Boolean(previewStoreGame);
   byId('game-favorite').hidden = Boolean(previewStoreGame);
   byId('game-customize').hidden = Boolean(previewStoreGame);
   byId('game-play').textContent = t(previewStoreGame ? storeInstallLabel(previewStoreGame) : '▶ Jogar');
@@ -1186,7 +1188,9 @@ function renderRoms() {
     tab.setAttribute('aria-pressed', String(romFilter === id));
     const engine = state.stores.find(item => item.id === emulator);
     const icon = storeIcon(engine || { id: emulator });
-    if (mark) setArt(icon, ['https://commons.wikimedia.org/wiki/Special:FilePath/' + mark, icon.src]);
+    if (mark && (id === 'wii' || id === 'gamecube' || id === 'android')) {
+      setArt(icon, ['https://commons.wikimedia.org/wiki/Special:FilePath/' + mark, icon.src]);
+    }
     const count = (state.roms || []).filter(game => systemOf(game) === id).length;
     const graphic = el('span', 'system-graphic');
     graphic.dataset.system = id;
@@ -1253,14 +1257,11 @@ function tvLayout() {
   return ['cockpit', 'gallery'].includes(state.tv?.layout) ? state.tv.layout : 'cinema';
 }
 
-function initialTvCategory(layout) {
-  return layout === 'cockpit' ? 'pc' : 'home';
-}
-
 function changeTvCategory(category, system = '') {
   theaterCategory = category;
   theaterSystem = system;
   tvLibraryPage = 0;
+  theaterGame = undefined;
   const deck = byId('theater-deck');
   deck.scrollTop = 0;
   deck.scrollLeft = 0;
@@ -1275,9 +1276,9 @@ function renderTvSystems() {
     const tile = button('', () => changeTvCategory('rom', theaterSystem === id ? '' : id), 'tv-system-card');
     tile.dataset.system = id;
     tile.setAttribute('aria-pressed', String(theaterCategory === 'rom' && theaterSystem === id));
-    const image = el('img');
-    image.src = consoleMarks[id] || 'assets/tv/' + (artwork[id] || 'pc') + '.jpg';
-    if (consoleMarks[id]) image.classList.add('tv-console-mark');
+    const image = consoleMarks[id] && !artwork[id] ? storeIcon({ id }) : el('img');
+    if (consoleMarks[id] && !artwork[id]) image.classList.add('tv-console-mark');
+    else image.src = 'assets/tv/' + (artwork[id] || 'pc') + '.jpg';
     image.alt = '';
     tile.setAttribute('aria-label', t(name));
     tile.append(image, el('span', '', t(name)));
@@ -1331,11 +1332,42 @@ function selectTheaterGame(game) {
   }
 }
 
-function stepGallery(direction) {
-  const games = currentTvPage(allTvGames());
-  if (games.length < 2) return;
-  const index = games.findIndex(game => tvGameKey(game) === tvGameKey(theaterGame));
-  selectTheaterGame(games[(index + direction + games.length) % games.length]);
+function focusTvGame(game) {
+  selectTheaterGame(game);
+  const tile = [...byId('theater-deck').querySelectorAll('.tv-card')].find(node => node.dataset.game === tvGameKey(game));
+  tile?.focus({ preventScroll: true });
+  tile?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
+function stepTvGame(offset) {
+  const games = allTvGames();
+  if (!games.length) return;
+  const current = games.findIndex(game => tvGameKey(game) === tvGameKey(theaterGame));
+  const index = tvLayout() === 'gallery' && theaterCategory !== 'pc' ?
+    ((current + offset) % games.length + games.length) % games.length :
+    Math.max(0, Math.min(games.length - 1, current + offset));
+  const page = Math.floor(index / tvItemsPerPage());
+  if (page !== tvLibraryPage) {
+    tvLibraryPage = page;
+    theaterGame = games[index];
+    renderTheater();
+  }
+  focusTvGame(games[index]);
+}
+
+function changeTvPage(direction, focusGame = false) {
+  const page = tvLibraryPage + direction;
+  const games = allTvGames();
+  const selected = games[page * tvItemsPerPage()];
+  if (page < 0 || !selected) return false;
+  tvLibraryPage = page;
+  theaterGame = selected;
+  const deck = byId('theater-deck');
+  deck.scrollTop = 0;
+  deck.scrollLeft = 0;
+  renderTheater();
+  if (focusGame) focusTvGame(selected);
+  return true;
 }
 
 function openGalleryStore(id) {
@@ -1393,6 +1425,7 @@ function renderTheater() {
   byId('theater').dataset.layout = layout;
   byId('theater').dataset.category = theaterCategory;
   byId('tv-pc-label').textContent = t(layout === 'gallery' ? 'Biblioteca' : 'Jogos de PC');
+  byId('tv-shoulder-label').textContent = t(grid ? 'Páginas' : 'Abas');
   byId('tv-rom-label').textContent = t('Emuladores');
   for (const tab of document.querySelectorAll('[data-tv]')) {
     tab.setAttribute('aria-pressed', String(tab.dataset.tv === theaterCategory));
@@ -1450,7 +1483,10 @@ function renderTheater() {
     }
     tile.append(ambient, image, el('span', '', game.name));
     tile.addEventListener('focus', () => {
-      if (tile.matches(':focus-visible') && tvGameKey(theaterGame) !== tile.dataset.game) selectTheaterGame(game);
+      if (tvGameKey(theaterGame) !== tile.dataset.game) selectTheaterGame(game);
+    });
+    tile.addEventListener(layout === 'gallery' && !grid ? 'pointermove' : 'pointerenter', event => {
+      if (event.pointerType === 'mouse' && tvGameKey(theaterGame) !== tile.dataset.game) selectTheaterGame(game);
     });
     return tile;
   });
@@ -1480,7 +1516,7 @@ function enterTheater() {
   clearInterval(homeRotation);
   theater = true;
   setTvInput('desktop');
-  theaterCategory = initialTvCategory(tvLayout());
+  theaterCategory = 'home';
   theaterSystem = '';
   tvLibraryPage = 0;
   theaterGame = undefined;
@@ -1513,7 +1549,8 @@ function focusDirection(key) {
     return;
   }
   const controls = selector => [...root.querySelectorAll(selector)]
-    .filter(node => !node.disabled && node.tabIndex >= 0 && node.getClientRects().length && getComputedStyle(node).visibility === 'visible');
+    .filter(node => !node.disabled && node.tabIndex >= 0 && node.getClientRects().length && getComputedStyle(node).visibility === 'visible' &&
+      (!theater || dialog || !node.closest('.theater-foot')));
   if (dialog && dialog.id !== 'tv-search-dialog') {
     const items = controls(navigationTargets);
     if (!items.length) return;
@@ -1529,6 +1566,21 @@ function focusDirection(key) {
       document.querySelector('[data-page][aria-current="page"]');
     first?.focus();
     return;
+  }
+  const inSystems = !dialog && theater && active.matches('.tv-system-card');
+  if (inSystems && dx) {
+    const systems = controls('.tv-system-card');
+    const target = systems[systems.indexOf(active) + dx];
+    target?.focus({ preventScroll: true });
+    target?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    return;
+  }
+  if (!dialog && theater && theaterCategory !== 'pc' && active.matches('.tv-card')) {
+    const layout = tvLayout();
+    if ((layout === 'gallery' || layout === 'cinema') && dx || layout === 'cockpit' && dy) {
+      stepTvGame(dx || dy);
+      return;
+    }
   }
   const center = node => {
     const bounds = node.getBoundingClientRect();
@@ -1563,6 +1615,7 @@ function focusDirection(key) {
 }
 
 let lastPadMove = 0;
+let lastPadTrigger = 0;
 let previousPadButtons = [];
 function setTvInput(input) {
   const root = byId('theater');
@@ -1574,10 +1627,15 @@ function setTvInput(input) {
   byId('tv-action-a').firstElementChild.textContent = controller ? 'A' : 'Enter';
   byId('tv-action-b').firstElementChild.textContent = controller ? 'B' : 'Esc';
   byId('tv-shoulder-hint').hidden = !controller;
+  byId('tv-trigger-hint').hidden = !controller;
 }
 
 function stepNavigationTab(direction) {
   if (activeDialog()) return;
+  if (theater && theaterCategory === 'pc') {
+    changeTvPage(direction, true);
+    return;
+  }
   const selector = theater ? '#theater-tabs > button' : '.titlebar [data-page]';
   const tabs = [...document.querySelectorAll(selector)].filter(tab => tab.getClientRects().length && !tab.disabled);
   if (tabs.length < 2) return;
@@ -1599,7 +1657,10 @@ function goBack() {
 }
 
 function showTheaterInfo() {
-  if (theaterGame && !activeDialog()) showGameDetails(theaterGame);
+  if (activeDialog()) return;
+  const key = document.activeElement?.closest('.tv-card')?.dataset.game;
+  const game = key && currentTvPage(allTvGames()).find(item => tvGameKey(item) === key);
+  if (game || theaterGame) showGameDetails(game || theaterGame);
 }
 
 async function playTheaterGame(node, game = theaterGame) {
@@ -1622,16 +1683,21 @@ async function playTheaterGame(node, game = theaterGame) {
 
 function pollPad(timestamp) {
   const pad = navigator.getGamepads?.().find(device => device?.connected);
-  if (pad) {
-    const down = index => Boolean(pad.buttons[index]?.pressed);
+  if (pad && document.hasFocus()) {
+    const down = index => Boolean(pad.buttons[index]?.pressed || (index >= 6 && pad.buttons[index]?.value > .55));
     const pressed = index => down(index) && !previousPadButtons[index];
     const key = down(14) || pad.axes[0] < -.54 ? 'ArrowLeft' :
       down(15) || pad.axes[0] > .54 ? 'ArrowRight' :
         down(12) || pad.axes[1] < -.54 ? 'ArrowUp' :
           down(13) || pad.axes[1] > .54 ? 'ArrowDown' : '';
-    if (key || [0, 1, 3, 4, 5].some(pressed)) setTvInput('gamepad');
+    if (key || [0, 1, 3, 4, 5, 6, 7].some(pressed)) setTvInput('gamepad');
     if (pressed(4) && !down(5)) stepNavigationTab(-1);
     if (pressed(5) && !down(4)) stepNavigationTab(1);
+    if (theater && !activeDialog() && down(6) !== down(7) &&
+        (pressed(6) || pressed(7) || timestamp - lastPadTrigger > 300)) {
+      stepTvGame(down(6) ? -8 : 8);
+      lastPadTrigger = timestamp;
+    }
     if (key && timestamp - lastPadMove > 180) {
       focusDirection(key);
       lastPadMove = timestamp;
@@ -1645,7 +1711,7 @@ function pollPad(timestamp) {
       if (theater) showTheaterInfo();
       else document.activeElement?.closest('.game-card')?.querySelector('.game-art')?.click();
     }
-    previousPadButtons = Array.from({ length: 6 }, (_, index) => down(index));
+    previousPadButtons = Array.from({ length: 8 }, (_, index) => down(index));
   } else {
     if (byId('theater').dataset.input === 'gamepad' && previousPadButtons.length) setTvInput('desktop');
     previousPadButtons = [];
@@ -1733,7 +1799,7 @@ function renderDownloadJobs() {
     row.append(content);
     const actionsByStatus = [];
     if (job.source === 'Steam' && (active || job.status === 'steam-requested')) {
-      actionsByStatus.push(['steam', 'Cancelar na Steam', api.steamDownloads]);
+      actionsByStatus.push(['steam', 'Cancelar na Steam', () => api.steamDownloads(theater)]);
     } else if (['queued', 'running'].includes(job.status)) {
       actionsByStatus.push(['cancel', 'Cancelar download', api.cancelDownload]);
     } else if (!active) {
@@ -1849,6 +1915,14 @@ async function renderPreferencesTab(tab) {
     } catch (error) { notify(error.message); }
   }
   if (tab === 'downloads') {
+    const dialog = byId('preferences-dialog');
+    const focusDownloads = () => {
+      if (!theater || !dialog.open || settingsTab !== 'downloads') return;
+      const active = document.activeElement;
+      if (dialog.contains(active) && active.closest('#prefs-downloads')) return;
+      const action = byId('download-jobs').querySelector('[data-download-action$=":steam"], [data-download-action$=":cancel"]');
+      (action || byId('prefs-steam-downloads')).focus();
+    };
     const readSteam = async () => {
       if (steamReading || document.hidden || settingsTab !== 'downloads' || !byId('preferences-dialog').open) return;
       steamReading = true;
@@ -1861,13 +1935,15 @@ async function renderPreferencesTab(tab) {
       } catch {} finally { steamReading = false; }
     };
     steamPoll = setInterval(readSteam, 4000);
-    void readSteam();
     renderDownloadJobs();
     const current = downloadJobs;
     try {
-      const jobs = await api.downloadsList();
+      const [jobs] = await Promise.all([api.downloadsList(), readSteam()]);
       if (downloadJobs === current) downloadJobs = jobs;
-      if (settingsTab === 'downloads') renderDownloadJobs();
+      if (settingsTab === 'downloads') {
+        renderDownloadJobs();
+        focusDownloads();
+      }
     } catch (error) { notify(error.message); }
   }
   byId('prefs-install-path').textContent = state.preferences?.installDirectory || t('Escolhida ao instalar cada jogo.');
@@ -1915,7 +1991,7 @@ byId('game-accounts').addEventListener('click', () => openPreferences('accounts'
 for (const node of byId('preferences-dialog').querySelectorAll('[data-settings]')) {
   node.addEventListener('click', () => renderPreferencesTab(node.dataset.settings));
 }
-byId('prefs-steam-downloads').addEventListener('click', event => perform(event.currentTarget, api.steamDownloads));
+byId('prefs-steam-downloads').addEventListener('click', event => perform(event.currentTarget, () => api.steamDownloads(theater)));
 byId('prefs-steam-form').addEventListener('submit', async event => {
   event.preventDefault();
   const input = byId('prefs-steam-link');
@@ -2101,7 +2177,11 @@ byId('app-update-install').addEventListener('click', async event => {
       t('A atualização está pronta para ser instalada.');
     button.hidden = true;
   } catch (error) {
-    status.textContent = t(error.message);
+    const message = error.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+    const translated = t(message);
+    status.textContent = translated !== message || /^O Linux não autorizou|^Não foi possível instalar a atualização do Flatpak/.test(message)
+      ? translated : t('Não foi possível instalar a atualização. Baixe o instalador na página da versão.');
+    byId('app-update-release').hidden = false;
   } finally {
     button.disabled = false;
     check.disabled = false;
@@ -2173,11 +2253,7 @@ byId('tv-search-input').addEventListener('keydown', event => {
 });
 for (const [id, direction] of [['tv-page-prev', -1], ['tv-page-next', 1]]) {
   byId(id).addEventListener('click', event => {
-    tvLibraryPage += direction;
-    const deck = byId('theater-deck');
-    deck.scrollTop = 0;
-    deck.scrollLeft = 0;
-    renderTheater();
+    if (!changeTvPage(direction)) return;
     if (event.currentTarget.disabled) byId(direction > 0 ? 'tv-page-prev' : 'tv-page-next').focus();
   });
 }
@@ -2190,8 +2266,8 @@ byId('theater-favorite').addEventListener('click', event => {
 byId('theater-details').addEventListener('click', showTheaterInfo);
 byId('tv-action-y').addEventListener('click', showTheaterInfo);
 byId('tv-action-b').addEventListener('click', goBack);
-byId('gallery-prev').addEventListener('click', () => stepGallery(-1));
-byId('gallery-next').addEventListener('click', () => stepGallery(1));
+byId('gallery-prev').addEventListener('click', () => stepTvGame(-1));
+byId('gallery-next').addEventListener('click', () => stepTvGame(1));
 byId('gallery-store').addEventListener('click', () => openGalleryStore());
 byId('gallery-config').addEventListener('click', () => {
   renderGalleryLauncherOptions();
@@ -2256,7 +2332,9 @@ for (const tile of layoutOptions) {
     const layout = tile.dataset.layout;
     if (await perform(tile, async () => {
       const next = await api.setTvLayout(layout);
-      theaterCategory = initialTvCategory(layout);
+      theaterCategory = 'home';
+      theaterGame = undefined;
+      tvLibraryPage = 0;
       theaterSystem = '';
       return next;
     })) {
@@ -2453,6 +2531,95 @@ byId('game-lookup').addEventListener('click', async event => {
   node.textContent = label;
 });
 byId('game-cover').addEventListener('click', event => perform(event.currentTarget, () => api.pickCover(selectedGame)));
+const coverPicker = byId('cover-picker');
+let coverPickerRequest = 0;
+
+async function loadCoverPicker(request, queryFallback = false) {
+  const sequence = ++coverPickerRequest;
+  const results = byId('cover-picker-results');
+  const status = byId('cover-picker-status');
+  results.replaceChildren();
+  status.textContent = t('Consultando…');
+  try {
+    let response = await api.coverChoices(request);
+    if (queryFallback && !response.covers?.length) {
+      response = await api.coverChoices({ id: request.id, query: byId('cover-picker-query').value });
+    }
+    if (sequence !== coverPickerRequest || !coverPicker.open) return;
+    const { covers, games } = response;
+    if (covers?.length) {
+      results.className = 'cover-picker-grid';
+      for (const [index, artwork] of covers.entries()) {
+        const size = artwork.width && artwork.height ? artwork.width + ' × ' + artwork.height : t(artwork.source || 'Steam');
+        const tile = button('', async node => {
+          if (coverPicker.dataset.saving) return;
+          coverPicker.dataset.saving = 'true';
+          node.disabled = true;
+          status.textContent = t('Salvando capa…');
+          try {
+            state = await api.chooseOnlineCover({ id: request.id, url: artwork.url });
+            render();
+            if (byId('game-editor').open) renderGameDetails();
+            coverPicker.close();
+          } catch {
+            status.textContent = t('Não foi possível salvar essa capa. Escolha outra opção.');
+          } finally {
+            node.disabled = false;
+            delete coverPicker.dataset.saving;
+          }
+        }, 'button cover-picker-tile');
+        tile.setAttribute('aria-label', t('Escolher capa {number} · {size}', { number: index + 1, size }));
+        const preview = el('img');
+        preview.alt = '';
+        preview.loading = 'lazy';
+        preview.addEventListener('error', () => {
+          if (preview.src === artwork.thumb && artwork.thumb !== artwork.url) preview.src = artwork.url;
+          else {
+            tile.remove();
+            if (!results.childElementCount) status.textContent = t('Nenhuma capa pôde ser carregada.');
+          }
+        });
+        preview.src = artwork.thumb;
+        tile.append(preview, el('span', '', size));
+        results.append(tile);
+      }
+      status.textContent = t('Selecione a capa que quer usar.');
+    } else if (games?.length) {
+      results.className = 'cover-picker-games';
+      for (const game of games) {
+        const label = game.year ? game.name + ' (' + game.year + ')' : game.name;
+        results.append(button(label, () => loadCoverPicker({ id: request.id, gridId: game.id })));
+      }
+      status.textContent = t('Escolha o jogo para ver as capas.');
+    } else {
+      status.textContent = t(state.gridConfigured ? 'Nenhuma capa encontrada. Tente o nome completo ou busque no Google Imagens.' :
+        'Conecte o SteamGridDB nas Integrações para pesquisar pelo nome, ou abra o Google Imagens.');
+    }
+  } catch {
+    if (sequence === coverPickerRequest && coverPicker.open) {
+      status.textContent = t('Não foi possível consultar as capas. Você também pode buscar no Google Imagens.');
+    }
+  }
+}
+
+byId('game-online-cover').addEventListener('click', () => {
+  byId('cover-picker-query').value = byId('game-query').value;
+  coverPicker.showModal();
+  void loadCoverPicker({ id: selectedGame }, true);
+});
+byId('cover-picker-close').addEventListener('click', () => coverPicker.close());
+byId('cover-picker').addEventListener('close', () => { coverPickerRequest++; });
+byId('cover-picker-form').addEventListener('submit', event => {
+  event.preventDefault();
+  void loadCoverPicker({ id: selectedGame, query: byId('cover-picker-query').value });
+});
+byId('cover-picker-google').addEventListener('click', event => perform(event.currentTarget, () =>
+  api.searchCover({ id: selectedGame, query: byId('cover-picker-query').value })));
+byId('cover-picker-file').addEventListener('click', event => perform(event.currentTarget, async () => {
+  const next = await api.pickCover(selectedGame);
+  if (next?.games) coverPicker.close();
+  return next;
+}));
 byId('game-replace-executable').addEventListener('click', event =>
   perform(event.currentTarget, () => api.replaceExecutable(selectedGame)));
 byId('game-reset-cover').addEventListener('click', event => perform(event.currentTarget, () => api.resetCover(selectedGame)));

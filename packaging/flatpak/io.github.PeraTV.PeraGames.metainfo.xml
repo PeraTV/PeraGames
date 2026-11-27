@@ -37,6 +37,10 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.22.9" date="2026-11-27">
+      <description><p>Fixed system Flatpak updates, TV navigation, emulator icons and Windows portable launchers. Added an online cover chooser and SteamGridDB setup instructions.</p></description>
+      <url>https://github.com/PeraTV/PeraGames/releases/tag/v0.22.9</url>
+    </release>
     <release version="0.22.8" date="2026-11-27">
       <description><p>Improved downloads, favorites, TV mode and Windows game compatibility on Linux.</p></description>
       <url>https://github.com/PeraTV/PeraGames/releases/tag/v0.22.8</url>

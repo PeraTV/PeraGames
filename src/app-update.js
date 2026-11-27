@@ -11,6 +11,22 @@ const run = promisify(execFile);
 const appId = 'io.github.PeraTV.PeraGames';
 const releaseVersion = /^v?(\d+)\.(\d+)\.(\d+)$/;
 
+async function installFlatpakUpdate(file, execute = run) {
+  const command = ['--host', 'flatpak'];
+  const userInstall = await execute('flatpak-spawn', [...command, 'info', '--user', appId], { timeout: 8000 })
+    .then(() => true, () => false);
+  const scope = userInstall ? ['--user', '--noninteractive'] : ['--system'];
+  try {
+    await execute('flatpak-spawn', [...command, 'install', ...scope, '--assumeyes', '--reinstall', '--bundle', file],
+      { timeout: 300000 });
+  } catch (error) {
+    const denied = /not allowed|not authori[sz]ed|permission denied|polkit|authorization|cancelled|cancelado/i.test(error.stderr || '');
+    throw new Error(!userInstall && denied ?
+      'O Linux não autorizou a atualização do Flatpak do sistema. Baixe o instalador pela página da versão e abra-o para autorizar.' :
+      'Não foi possível instalar a atualização do Flatpak. Abra a página da versão para baixar o instalador.');
+  }
+}
+
 function isNewerRelease(remote, installed) {
   const parts = tag => releaseVersion.exec(tag)?.slice(1).map(Number);
   const candidate = parts(remote);
@@ -79,11 +95,7 @@ function createUpdater({ app, shell, version, repository }) {
       }), require('node:fs').createWriteStream(file, { flags: 'wx' }));
       if (hash.digest('hex') !== release.sha) throw new Error('A integridade do instalador não pôde ser confirmada.');
       if (release.os === 'flatpak') {
-        const userInstall = await run('flatpak-spawn', ['--host', 'flatpak', 'info', '--user', appId])
-          .then(() => true, () => false);
-        const scope = userInstall ? '--user' : '--system';
-        await run('flatpak-spawn', ['--host', 'flatpak', 'install', scope, '--noninteractive', '--assumeyes', '--reinstall', '--bundle', file],
-          { timeout: 300000 });
+        await installFlatpakUpdate(file);
         return { restart: true };
       }
       const error = await shell.openPath(file);
@@ -99,4 +111,4 @@ function createUpdater({ app, shell, version, repository }) {
   return { check, install, open: () => pendingRelease && shell.openExternal(pendingRelease.page) };
 }
 
-module.exports = { createUpdater, isNewerRelease };
+module.exports = { createUpdater, isNewerRelease, installFlatpakUpdate };

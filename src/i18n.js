@@ -502,6 +502,27 @@ Cancelando…|Cancelling…
 Download cancelado|Download cancelled
 Confirmando instalação…|Confirming installation…
 Cancelar na Steam|Cancel in Steam
+Páginas|Pages
+Avançar jogos|Skip through games
+Escolher capa na web|Choose cover online
+Buscar capas|Find covers
+Abrir Google Imagens ↗|Open Google Images ↗
+Usar arquivo de imagem|Use image file
+Salvando capa…|Saving cover…
+Escolher capa {number} · {size}|Choose cover {number} · {size}
+Selecione a capa que quer usar.|Select the cover you want to use.
+Escolha o jogo para ver as capas.|Select a game to see its covers.
+Nenhuma capa pôde ser carregada.|No cover could be loaded.
+Nenhuma capa encontrada. Tente o nome completo ou busque no Google Imagens.|No covers found. Try the full title or search Google Images.
+Conecte o SteamGridDB nas Integrações para pesquisar pelo nome, ou abra o Google Imagens.|Connect SteamGridDB in Integrations to search by name, or open Google Images.
+Não foi possível consultar as capas. Você também pode buscar no Google Imagens.|Could not look up covers. You can also search Google Images.
+Não foi possível salvar essa capa. Escolha outra opção.|Could not save that cover. Choose another option.
+Clique em Obter chave no SteamGridDB e entre com sua conta Steam.|Select Get a key from SteamGridDB and sign in with your Steam account.
+Nas preferências do SteamGridDB, abra API. Clique em Generate API Key e copie a chave exibida.|Open API in SteamGridDB preferences. Select Generate API Key and copy the displayed key.
+Volte ao PeraGames, cole a chave no campo abaixo e clique em Salvar chave.|Return to PeraGames, paste your key below, and select Save key.
+O Linux não autorizou a atualização do Flatpak do sistema. Baixe o instalador pela página da versão e abra-o para autorizar.|Linux did not authorize the system Flatpak update. Download the installer from the release page and open it to authorize the update.
+Não foi possível instalar a atualização do Flatpak. Abra a página da versão para baixar o instalador.|Could not install the Flatpak update. Open the release page to download the installer.
+Não foi possível instalar a atualização. Baixe o instalador na página da versão.|Could not install the update. Download the installer from the release page.
 Baixe o instalador oficial em Lojas e selecione Rodar instalador primeiro. Ao terminar, feche o launcher se ele abrir sozinho. O PeraGames procura o executável no mesmo prefixo.|Download the official installer from Stores and select Run installer first. Close the launcher if it opens after installation. PeraGames looks for its executable in the same prefix.
 Executável encontrado. Salve para abrir em Lojas.|Executable found. Save to open it from Stores.
 Resultados da busca|Search results
