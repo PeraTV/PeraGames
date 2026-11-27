@@ -439,7 +439,7 @@ function launch(file, args = [], { cwd = path.dirname(file), visible = false, en
 async function launchWindowsPortable(file, onFailure) {
   const start = Date.now();
   try {
-    return await launch(file, [], { cwd: path.dirname(file), onClose: code => {
+    return await launch(file, [], { cwd: path.dirname(file), visible: true, onClose: code => {
       if (code && Date.now() - start < 5000) onFailure(code);
     } });
   } catch (error) {
