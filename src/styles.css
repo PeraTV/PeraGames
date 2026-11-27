@@ -185,6 +185,9 @@ body:not(.theater-on) main:has(#home:not([hidden])) { scrollbar-width: none; }
 .system-graphic .store-mark { width: 53px; height: 41px; object-position: left center; filter: brightness(0) invert(1) drop-shadow(0 1px 7px #000e); }
 .system-graphic .emulator-mark { filter: drop-shadow(0 1px 7px #000e); }
 #app-update-status { overflow-wrap: anywhere; }
+#app-update-notes { margin-block: 14px; padding-block: 12px; border-block: 1px solid var(--line); }
+#app-update-changes { margin: 8px 0 0; padding-inline-start: 20px; overflow-wrap: anywhere; }
+#app-update-changes li + li { margin-top: 5px; }
 .grid-key-steps { padding-inline-start: 1.4em; margin: 8px 0 12px; }
 .grid-key-steps li + li { margin-top: 4px; }
 #cover-picker { width: min(760px, calc(100% - 24px)); }

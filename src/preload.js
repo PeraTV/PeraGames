@@ -37,6 +37,7 @@ contextBridge.exposeInMainWorld('pera', {
   onDownloadLibrary: fn => ipcRenderer.on('downloads:library', (_, value) => fn(value)),
   refresh: () => invoke('catalog:refresh'),
   checkAppUpdate: () => invoke('app:update-check'),
+  appReleaseNotes: () => invoke('app:update-notes'),
   openAppRelease: () => invoke('app:update-open'),
   installAppUpdate: () => invoke('app:update-install'),
   openStore: id => invoke('store:open', id),

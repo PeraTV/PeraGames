@@ -83,10 +83,13 @@ const activeWindowsPrefixes = new Set();
 const lastLaunchStages = new Map();
 const lastDiagnosticReports = new WeakMap();
 
+let existingLibrary = false;
+
 async function loadData() {
   const file = path.join(app.getPath('userData'), 'library.json');
   try {
     const saved = JSON.parse(await fs.readFile(file, 'utf8'));
+    existingLibrary = true;
     data = { ...emptyData(), ...saved };
     data.preferences = { ...defaultPreferences, ...saved.preferences };
     if ((saved.gridKey || saved.steamKey) && await canSaveSecret()) {
@@ -505,6 +508,10 @@ handle('steam-account:disconnect', () => changeSteamAccount(async () => {
   return state();
 }));
 handle('app:update-check', updater.check);
+handle('app:update-notes', () => {
+  const notes = require('./release-notes.json');
+  return { version, existingLibrary, changes: notes.version === version ? notes.changes : [] };
+});
 handle('app:update-open', updater.open);
 handle('app:update-install', updater.install);
 handle('tv:layout', async layout => {

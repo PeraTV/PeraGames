@@ -37,6 +37,10 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.22.11" date="2026-11-27">
+      <description><p>Restored grayscale covers for uninstalled games in TV mode and added release notes to the update dialog.</p></description>
+      <url>https://github.com/PeraTV/PeraGames/releases/tag/v0.22.11</url>
+    </release>
     <release version="0.22.10" date="2026-11-27">
       <description><p>Refined Gallery mouse controls, settings navigation and zoom with a controller, and TV mode palette colors.</p></description>
       <url>https://github.com/PeraTV/PeraGames/releases/tag/v0.22.10</url>

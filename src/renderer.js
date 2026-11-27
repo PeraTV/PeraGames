@@ -2154,18 +2154,47 @@ byId('game-setup-form').addEventListener('submit', event => {
   }, 'Salvando na biblioteca…');
 });
 byId('refresh-games').addEventListener('click', event => perform(event.currentTarget, api.refresh, 'Biblioteca atualizada.'));
+let installedReleaseNotes;
+
+function showReleaseNotes(notes) {
+  const section = byId('app-update-notes');
+  const changes = notes?.changes || [];
+  section.hidden = !changes.length;
+  byId('app-update-notes-heading').textContent = changes.length
+    ? t('O que mudou na versão {version}', { version: notes.version }) : '';
+  byId('app-update-changes').replaceChildren(...changes.map(change => el('li', '', t(change))));
+}
+
+async function showInstalledReleaseNotes() {
+  installedReleaseNotes = await api.appReleaseNotes().catch(() => undefined);
+  if (!installedReleaseNotes?.version) return false;
+  const key = 'peragames.installedVersion';
+  let previous;
+  try {
+    previous = localStorage.getItem(key);
+    localStorage.setItem(key, installedReleaseNotes.version);
+  } catch {}
+  if (previous === installedReleaseNotes.version || !installedReleaseNotes.changes.length ||
+      (!previous && !installedReleaseNotes.existingLibrary) || activeDialog()) return false;
+  showReleaseNotes(installedReleaseNotes);
+  byId('app-update-status').textContent = t('PeraGames atualizado para a versão {version}.', installedReleaseNotes);
+  byId('app-update-dialog').showModal();
+  return true;
+}
+
 async function checkAppUpdate({ automatic = false } = {}) {
   const status = byId('app-update-status');
   const check = byId('app-update-check');
   const release = byId('app-update-release');
   const install = byId('app-update-install');
   if (check.disabled) return;
+  showReleaseNotes(installedReleaseNotes);
   status.textContent = t('Consultando atualizações…');
   release.hidden = true;
   install.hidden = true;
   check.disabled = true;
   try {
-    const { version, status: result, latest, installable } = await api.checkAppUpdate();
+    const { version, status: result, latest, installable, changes } = await api.checkAppUpdate();
     const messages = {
       unconfigured: t('A publicação das atualizações do PeraGames ainda não foi configurada.'),
       'no-release': t('Ainda não há uma versão publicada.'),
@@ -2173,13 +2202,14 @@ async function checkAppUpdate({ automatic = false } = {}) {
       available: t('A versão {version} está disponível.', { version: latest })
     };
     status.textContent = t('Versão instalada: {version}. {message}', { version, message: messages[result] });
+    if (result === 'available') showReleaseNotes({ version: latest, changes });
     byId('app-update-open').toggleAttribute('data-update-available', result === 'available');
     if (result !== 'available') byId('update-banner').hidden = true;
     else if (automatic && !byId('app-update-dialog').open) {
       byId('update-banner-text').textContent = t('A versão {version} está disponível.', { version: latest });
       byId('update-banner').hidden = false;
     }
-    release.hidden = result !== 'available' || installable;
+    release.hidden = result !== 'available';
     install.hidden = !installable;
   } catch {
     status.textContent = t('Não foi possível verificar a atualização. Tente novamente.');
@@ -2755,6 +2785,6 @@ async function start() {
   requestAnimationFrame(pollPad);
   render();
   perform(byId('refresh-games'), api.refresh);
-  void checkAppUpdate({ automatic: true });
+  if (!await showInstalledReleaseNotes()) void checkAppUpdate({ automatic: true });
 }
 start();

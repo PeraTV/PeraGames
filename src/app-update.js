@@ -11,6 +11,30 @@ const run = promisify(execFile);
 const appId = 'io.github.PeraTV.PeraGames';
 const releaseVersion = /^v?(\d+)\.(\d+)\.(\d+)$/;
 
+function releaseChanges(body) {
+  if (typeof body !== 'string') return [];
+  return body.slice(0, 12000).split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(line => line && !/^#|^\*\*Full Changelog\*\*|^<!--/i.test(line))
+    .slice(0, 25)
+    .map(line => line.replace(/^(?:[-*+] |\d+\. )/, '')
+      .replace(/\[([^\]]+)\]\(https?:\/\/[^)]+\)/g, '$1')
+      .replace(/\*\*|\x60/g, ''));
+}
+
+async function publishedChanges(repository, tag, body) {
+  const response = await fetch('https://raw.githubusercontent.com/' + repository + '/' +
+    tag + '/src/release-notes.json', { redirect: 'error', signal: AbortSignal.timeout(3000) })
+    .catch(() => null);
+  const notes = response?.ok ? await response.json().catch(() => null) : null;
+  if (notes?.version === tag.replace(/^v/, '') && Array.isArray(notes.changes)) {
+    const changes = notes.changes.filter(change => typeof change === 'string' && change.trim())
+      .slice(0, 25).map(change => change.slice(0, 1000));
+    if (changes.length) return changes;
+  }
+  return releaseChanges(body);
+}
+
 async function installFlatpakUpdate(file, execute = run) {
   const command = ['--host', 'flatpak'];
   const userInstall = await execute('flatpak-spawn', [...command, 'info', '--user', appId], { timeout: 8000 })
@@ -65,7 +89,8 @@ function createUpdater({ app, shell, version, repository }) {
     } else if (asset && (os === 'windows' || os === 'flatpak')) {
       Object.assign(pendingRelease, { os, filename, url: base + 'download/' + tag + '/' + filename, sha: asset.digest.slice(7).toLowerCase() });
     }
-    return { ...result, status: 'available', latest: release.tag_name, installable: Boolean(pendingRelease.os) };
+    return { ...result, status: 'available', latest: release.tag_name, installable: Boolean(pendingRelease.os),
+      changes: await publishedChanges(repository, tag, release.body) };
   }
 
   async function install() {
@@ -111,4 +136,4 @@ function createUpdater({ app, shell, version, repository }) {
   return { check, install, open: () => pendingRelease && shell.openExternal(pendingRelease.page) };
 }
 
-module.exports = { createUpdater, isNewerRelease, installFlatpakUpdate };
+module.exports = { createUpdater, isNewerRelease, installFlatpakUpdate, releaseChanges };

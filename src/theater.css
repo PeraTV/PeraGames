@@ -59,7 +59,7 @@
 }
 #theater[data-layout][data-category="pc"] .tv-card::after { display: none; }
 #theater[data-layout="gallery"]:not([data-category="pc"]) .tv-library-pages { position: absolute; z-index: 2; top: 0; right: 8vw; pointer-events: auto; }
-body:not([data-color-uninstalled]) .tv-card.tv-uninstalled img { opacity: .73; filter: grayscale(1); }
+body:not([data-color-uninstalled]) #theater .theater-deck .tv-card.tv-uninstalled img { opacity: .73; filter: grayscale(1); }
 @media (max-width: 640px) { .tv-search-layout { grid-template-columns: 1fr; } }
 .tv-icon-definitions { position: absolute; width: 0; height: 0; pointer-events: none; }
 .tv-nav-icon {

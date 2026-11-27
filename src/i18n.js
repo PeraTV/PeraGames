@@ -191,6 +191,8 @@ Ainda não há uma versão publicada.|No release is available yet.
 O PeraGames está atualizado.|PeraGames is up to date.
 A versão {version} está disponível.|Version {version} is available.
 Versão instalada: {version}. {message}|Installed version: {version}. {message}
+O que mudou na versão {version}|What changed in version {version}
+PeraGames atualizado para a versão {version}.|PeraGames was updated to version {version}.
 Não foi possível verificar a atualização. Tente novamente.|Could not check for updates. Try again.
 Baixando e verificando a atualização…|Downloading and verifying the update…
 Atualização instalada. Feche e reabra o PeraGames pelo menu.|Update installed. Close PeraGames and reopen it from the menu.
