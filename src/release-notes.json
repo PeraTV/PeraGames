@@ -1,7 +1,6 @@
 {
-  "version": "0.22.11",
+  "version": "0.22.12",
   "changes": [
-    "No Modo TV, as capas de jogos não instalados aparecem em cinza por padrão. A opção de capas coloridas continua disponível em Aparência.",
-    "A janela Verificar atualizações mostra o que mudou em cada versão. Após atualizar, as novidades aparecem quando o PeraGames reabre."
+    "No Linux, o atualizador Flatpak identifica corretamente a instalação do usuário mesmo quando há várias branches do PeraGames instaladas."
   ]
 }

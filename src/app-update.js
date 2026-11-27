@@ -35,10 +35,14 @@ async function publishedChanges(repository, tag, body) {
   return releaseChanges(body);
 }
 
+function flatpakUserHasApp(output, id = appId) {
+  return String(output || '').split(/\r?\n/).some(line => line.trim() === id);
+}
+
 async function installFlatpakUpdate(file, execute = run) {
   const command = ['--host', 'flatpak'];
-  const userInstall = await execute('flatpak-spawn', [...command, 'info', '--user', appId], { timeout: 8000 })
-    .then(() => true, () => false);
+  const userInstall = await execute('flatpak-spawn', [...command, 'list', '--user', '--app', '--columns=application'],
+    { timeout: 15000 }).then(({ stdout }) => flatpakUserHasApp(stdout), () => false);
   const scope = userInstall ? ['--user', '--noninteractive'] : ['--system'];
   try {
     await execute('flatpak-spawn', [...command, 'install', ...scope, '--assumeyes', '--reinstall', '--bundle', file],
